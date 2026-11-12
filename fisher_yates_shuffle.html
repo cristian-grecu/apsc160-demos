@@ -1,0 +1,421 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Fisher–Yates Shuffle</title>
+<style>
+/* Layout: one column; Part 1 = stage + controls + code/variables, Part 2 = biased version + exact counts + simulation */
+:root {
+  --bg: #eef1df;
+  --surface: #fbfcf5;
+  --ink: #2a2b22;
+  --muted: #6b6853;
+  --line: #cfd3ba;
+  --accent: #a33212;
+  --orange: #d9771c;
+  --done: #5b8040;
+  --band: rgba(217, 119, 28, 0.14);
+  --hl: rgba(217, 119, 28, 0.22);
+  --font-body: "Segoe UI", system-ui, -apple-system, "Helvetica Neue", Arial, sans-serif;
+  --font-mono: ui-monospace, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+  --cell: 64px;
+  --gap: 10px;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #1b1d16; --surface: #25281f; --ink: #e9ebdc; --muted: #aaa78f; --line: #3c4032;
+    --accent: #e2694a; --orange: #f09a45; --done: #8ab866;
+    --band: rgba(240, 154, 69, 0.16); --hl: rgba(240, 154, 69, 0.24);
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #1b1d16; --surface: #25281f; --ink: #e9ebdc; --muted: #aaa78f; --line: #3c4032;
+  --accent: #e2694a; --orange: #f09a45; --done: #8ab866;
+  --band: rgba(240, 154, 69, 0.16); --hl: rgba(240, 154, 69, 0.24);
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; }
+body { background: var(--bg); color: var(--ink); font: 16px/1.5 var(--font-body); }
+main { max-width: 980px; margin: 0 auto; padding: 24px 16px 48px; display: grid; gap: 28px; }
+h1, h2, h3 { text-wrap: balance; margin: 0; line-height: 1.2; }
+h1 { font-size: 1.75rem; }
+h2 { font-size: 1.3rem; }
+h3 { font-size: 1rem; }
+p { margin: 0; max-width: 68ch; }
+code, .mono { font-family: var(--font-mono); }
+.lede { color: var(--muted); }
+section.card { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 20px; display: grid; gap: 16px; }
+.part { font-size: .8rem; letter-spacing: .08em; text-transform: uppercase; color: var(--accent); font-weight: 700; }
+
+/* ---------- stage ---------- */
+.stage-wrap { overflow-x: auto; }
+.stage { position: relative; margin: 0 auto; height: calc(var(--cell) + 150px); }
+.idx, .box, .arrow, .band { position: absolute; }
+.idx { top: 0; width: var(--cell); text-align: center; font: 13px var(--font-mono); color: var(--muted); }
+.band { top: 54px; height: calc(var(--cell) + 16px); border: 2px dashed var(--orange); background: var(--band); border-radius: 10px;
+  transition: left .35s ease, width .35s ease, opacity .25s; }
+.box { top: 62px; width: var(--cell); height: var(--cell); border-radius: 8px; display: grid; place-items: center;
+  font: 600 calc(var(--cell) * .36) var(--font-mono); background: var(--surface); color: var(--ink); border: 2px solid var(--muted);
+  transition: background .3s, color .3s, border-color .3s; }
+.box.done { background: var(--done); border-color: var(--done); color: #fff; }
+.box.pick { border-color: var(--accent); box-shadow: 0 0 0 3px var(--hl); }
+.arrow { width: var(--cell); text-align: center; font: 700 14px var(--font-mono); transition: left .35s ease, opacity .25s; }
+.arrow .tip { display: block; font-size: 18px; line-height: 1; }
+.arrow.i { top: 20px; color: var(--accent); }
+.arrow.j { top: calc(var(--cell) + 84px); color: var(--orange); }
+.hidden { opacity: 0; }
+.legend { display: flex; flex-wrap: wrap; gap: 14px; justify-content: center; font-size: .85rem; color: var(--muted); }
+.legend span { display: inline-flex; align-items: center; gap: 6px; }
+.sw { width: 14px; height: 14px; border-radius: 3px; display: inline-block; border: 2px solid var(--muted); background: var(--surface); }
+.sw.r { border: 2px dashed var(--orange); background: var(--band); }
+.sw.d { background: var(--done); border-color: var(--done); }
+
+.msg { min-height: 3em; padding: 10px 14px; border-left: 4px solid var(--accent); background: var(--bg); border-radius: 0 8px 8px 0; }
+
+/* ---------- controls ---------- */
+.controls { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+button { font: 600 .95rem var(--font-body); padding: 8px 14px; border-radius: 8px; border: 1px solid var(--accent);
+  background: var(--surface); color: var(--accent); cursor: pointer; }
+button.primary { background: var(--accent); color: #fff; }
+button:disabled { opacity: .45; cursor: default; }
+button:focus-visible, input:focus-visible { outline: 3px solid var(--orange); outline-offset: 2px; }
+.seg { display: inline-flex; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
+.seg button { border: 0; border-radius: 0; color: var(--muted); }
+.seg button[aria-pressed="true"] { background: var(--ink); color: var(--surface); }
+label.speed { display: inline-flex; align-items: center; gap: 8px; font-size: .9rem; color: var(--muted); }
+.counter { margin-left: auto; font: 13px var(--font-mono); color: var(--muted); font-variant-numeric: tabular-nums; }
+
+/* ---------- code + vars ---------- */
+.cols { display: grid; grid-template-columns: minmax(0, 1fr) 220px; gap: 16px; }
+pre.code { margin: 0; padding: 12px 0; background: var(--bg); border: 1px solid var(--line); border-radius: 8px; overflow-x: auto;
+  font: 14px/1.6 var(--font-mono); }
+pre.code span { display: block; padding: 0 14px; border-left: 4px solid transparent; }
+pre.code span.on { background: var(--hl); border-left-color: var(--orange); }
+.vars { display: grid; gap: 8px; align-content: start; }
+.var { display: flex; justify-content: space-between; align-items: center; padding: 8px 12px; border: 1px solid var(--line); border-radius: 8px;
+  font: 15px var(--font-mono); font-variant-numeric: tabular-nums; transition: background .3s; }
+.var b { color: var(--muted); font-weight: 600; }
+.var.flash { background: var(--hl); }
+.arr-text { font: 14px var(--font-mono); color: var(--muted); }
+
+/* ---------- part 2 ---------- */
+.charts { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+.chart { border: 1px solid var(--line); border-radius: 8px; padding: 12px; display: grid; gap: 6px; }
+.chart .sub { font-size: .85rem; color: var(--muted); }
+.chart svg { width: 100%; height: auto; display: block; }
+.note { font-size: .9rem; color: var(--muted); }
+
+@media (max-width: 720px) {
+  .cols, .charts { grid-template-columns: 1fr; }
+  .counter { margin-left: 0; width: 100%; }
+}
+@media (prefers-reduced-motion: reduce) {
+  * { transition: none !important; }
+}
+</style>
+</head>
+<body>
+<main>
+  <header style="display:grid;gap:6px">
+    <h1>The Fisher–Yates shuffle</h1>
+    <p class="lede">Shuffle an array in place so that every order is equally likely: walk from the back, and swap each position with a random one that hasn't been placed yet.</p>
+  </header>
+
+  <!-- ================= PART 1 ================= -->
+  <section class="card" aria-labelledby="p1">
+    <div class="part">Part 1</div>
+    <h2 id="p1">Step through the shuffle</h2>
+
+    <div class="stage-wrap"><div class="stage" id="stage" aria-hidden="true"></div></div>
+    <div class="legend">
+      <span><i class="sw"></i>still to shuffle</span>
+      <span><i class="sw r"></i>where j can land: 0 … i</span>
+      <span><i class="sw d"></i>done (final position)</span>
+    </div>
+    <div class="msg" id="msg" role="status" aria-live="polite"></div>
+
+    <div class="controls">
+      <button id="back" title="Back (←)">◀ Back</button>
+      <button id="step" class="primary" title="Step (→)">Step ▶</button>
+      <button id="play" title="Play / pause (space)">Play</button>
+      <button id="reset">Reset</button>
+      <label class="speed" for="speed">Speed <input id="speed" type="range" min="1" max="5" value="3"></label>
+      <div class="seg" role="group" aria-label="Run type">
+        <button id="mTeach" aria-pressed="true">Teaching run</button>
+        <button id="mRand" aria-pressed="false">Random run</button>
+      </div>
+      <span class="counter" id="counter"></span>
+    </div>
+
+    <div class="cols">
+      <pre class="code" id="code" aria-label="C code"><span>char a[] = {'r', 'a', 'n', 'd', 'o', 'm'};</span><span>int n = 6;</span><span> </span><span>for (int i = n - 1; i &gt; 0; i--) {</span><span>    int j = rand() % (i + 1);   // 0 .. i</span><span>    char temp = a[i];</span><span>    a[i] = a[j];</span><span>    a[j] = temp;</span><span>}</span></pre>
+      <div class="vars">
+        <div class="var" id="vI"><b>i</b><span>–</span></div>
+        <div class="var" id="vJ"><b>j</b><span>–</span></div>
+        <div class="var" id="vT"><b>temp</b><span>–</span></div>
+        <div class="arr-text" id="arrText"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================= PART 2 ================= -->
+  <section class="card" aria-labelledby="p2">
+    <div class="part">Part 2</div>
+    <h2 id="p2">A common mistake: picking from the whole array</h2>
+    <p>This version looks almost the same, but <code>j</code> can land anywhere, including on positions already placed:</p>
+    <pre class="code"><span>for (int i = 0; i &lt; n; i++) {</span><span class="on">    int j = rand() % n;          // 0 .. n-1, every time</span><span>    char temp = a[i];</span><span>    a[i] = a[j];</span><span>    a[j] = temp;</span><span>}</span></pre>
+    <p>Take <code>n = 3</code> and the array <code>'a', 'b', 'c'</code>. Count every possible run:</p>
+    <ul style="margin:0;padding-left:1.2em;display:grid;gap:4px;max-width:68ch">
+      <li><b>Fisher–Yates:</b> j has 3 choices, then 2: <b>3 × 2 = 6</b> runs for 6 orders. Each order comes out exactly once.</li>
+      <li><b>Biased version:</b> j has 3 choices, three times: <b>3 × 3 × 3 = 27</b> runs for 6 orders. 27 ÷ 6 isn't a whole number, so some orders <i>must</i> come up more often than others.</li>
+    </ul>
+    <div class="charts">
+      <div class="chart"><h3>Fisher–Yates: all 6 runs</h3><div class="sub">How many runs end in each order</div><svg id="exFY" viewBox="0 0 360 200" role="img" aria-label="Fisher-Yates exact counts"></svg></div>
+      <div class="chart"><h3>Biased version: all 27 runs</h3><div class="sub">How many runs end in each order</div><svg id="exB" viewBox="0 0 360 200" role="img" aria-label="Biased version exact counts"></svg></div>
+    </div>
+
+    <h3>Try it: shuffle 60,000 times with each method</h3>
+    <div class="controls">
+      <button id="sim" class="primary">Run 60,000 shuffles</button>
+      <span class="note" id="simNote">Each bar is the share of runs that ended in that order. A fair shuffle gives 1/6 ≈ 16.7% each (dashed line).</span>
+    </div>
+    <div class="charts">
+      <div class="chart"><h3>Fisher–Yates</h3><svg id="simFY" viewBox="0 0 360 200" role="img" aria-label="Fisher-Yates simulation"></svg></div>
+      <div class="chart"><h3>Biased version</h3><svg id="simB" viewBox="0 0 360 200" role="img" aria-label="Biased version simulation"></svg></div>
+    </div>
+    <p class="note">For n = 3 the biased version gives each order 4/27 ≈ 14.8% or 5/27 ≈ 18.5% instead of 16.7%, and the unevenness gets worse as n grows. Fix: pick <code>j</code> only from the part not yet placed, <code>rand() % (i + 1)</code>, and count <code>i</code> down.</p>
+  </section>
+</main>
+
+<script>
+(function () {
+  "use strict";
+  var START = ["r", "a", "n", "d", "o", "m"];
+  var N = START.length;
+  var TEACH_J = { 5: 1, 4: 4, 3: 0, 2: 1, 1: 0 };   // includes j == i (i = 4) and j = 0
+  var LINE = { decl: 0, loop: 3, pick: 4, temp: 5, aij: 6, ajt: 7 };
+  var mode = "teach";
+  var frames = [], pos = 0, timer = null;
+  var reduce = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+  var $ = function (id) { return document.getElementById(id); };
+  var stage = $("stage"), codeLines = $("code").children;
+
+  // ---------- build the frame list ----------
+  function q(c) { return "'" + c + "'"; }
+  function build() {
+    var a = START.slice(), ids = [0, 1, 2, 3, 4, 5], done = [], f = [];
+    function push(o) {
+      f.push(Object.assign({ a: a.slice(), ids: ids.slice(), done: done.slice(), i: null, j: null, temp: null, band: null, line: null, swap: null, flash: null }, o));
+    }
+    push({ line: LINE.decl, msg: "Start: the array holds 'r','a','n','d','o','m'. Press <b>Step</b> (or →) to begin." });
+    for (var i = N - 1; i > 0; i--) {
+      var j = mode === "teach" ? TEACH_J[i] : Math.floor(Math.random() * (i + 1));
+      push({ i: i, line: LINE.loop, flash: "i", msg: "i = " + i + ": position " + i + " is the last one not yet placed." });
+      push({ i: i, j: j, band: i, line: LINE.pick, flash: "j",
+        msg: "rand() % " + (i + 1) + " gives a number from 0 to " + i + " (the shaded part). This time j = " + j + "." });
+      var t = a[i];
+      push({ i: i, j: j, band: i, temp: t, line: LINE.temp, flash: "temp", msg: "Save a[" + i + "] = " + q(t) + " in temp." });
+      a[i] = a[j]; a[j] = t;
+      var k = ids[i]; ids[i] = ids[j]; ids[j] = k;
+      push({ i: i, j: j, band: i, temp: t, line: [LINE.aij, LINE.ajt], swap: [i, j],
+        msg: i === j ? "j == i: the letter swaps with itself and stays put. That's allowed: every letter must be able to stay where it is."
+                     : "Swap: a[" + i + "] gets " + q(a[i]) + ", a[" + j + "] gets " + q(a[j]) + " (from temp)." });
+      done.push(i);
+      push({ i: i, j: j, temp: t, line: LINE.loop, msg: "Position " + i + " is final. Only positions 0 to " + (i - 1) + " are left to shuffle." });
+    }
+    done.push(0);
+    push({ i: 0, line: LINE.loop, flash: "i",
+      msg: "i = 0: the condition i > 0 is false, so the loop stops. Position 0 has nothing left to swap with, so it's final too. <b>" + (N - 1) + " swaps, and every order is equally likely.</b>" });
+    frames = f; pos = 0;
+  }
+
+  // ---------- drawing ----------
+  var boxes = [], idxEls = [], arrowI, arrowJ, band;
+  function geom() {
+    var w = Math.min(64, Math.floor((stage.parentNode.clientWidth - 8) / (N + (N - 1) * 0.16)));
+    w = Math.max(w, 40);
+    var g = Math.round(w * 0.16);
+    document.documentElement.style.setProperty("--cell", w + "px");
+    stage.style.width = (N * w + (N - 1) * g) + "px";
+    return { w: w, g: g, x: function (k) { return k * (w + g); } };
+  }
+  function setup() {
+    stage.innerHTML = "";
+    band = el("div", "band hidden"); stage.appendChild(band);
+    for (var k = 0; k < N; k++) {
+      var ix = el("div", "idx"); ix.textContent = "[" + k + "]"; stage.appendChild(ix); idxEls.push(ix);
+    }
+    for (k = 0; k < N; k++) { var b = el("div", "box"); stage.appendChild(b); boxes.push(b); }
+    arrowI = el("div", "arrow i hidden"); arrowI.innerHTML = '<span class="lab">i</span><span class="tip">▼</span>';
+    arrowJ = el("div", "arrow j hidden"); arrowJ.innerHTML = '<span class="tip">▲</span><span class="lab">j</span>';
+    stage.appendChild(arrowI); stage.appendChild(arrowJ);
+  }
+  function el(t, c) { var e = document.createElement(t); e.className = c; return e; }
+
+  function render(animate) {
+    var f = frames[pos], G = geom();
+    idxEls.forEach(function (e, k) { e.style.left = G.x(k) + "px"; });
+    // boxes are tied to letters (ids) so a swap moves the actual boxes
+    var prevLeft = boxes.map(function (b) { return parseFloat(b.style.left) || 0; });
+    for (var p = 0; p < N; p++) {
+      var b = boxes[f.ids[p]];
+      b.textContent = f.a[p];
+      b.style.left = G.x(p) + "px";
+      b.classList.toggle("done", f.done.indexOf(p) >= 0);
+      b.classList.toggle("pick", f.j !== null && f.band !== null && (p === f.j || p === f.i) && f.done.indexOf(p) < 0);
+    }
+    if (animate && f.swap && !reduce) {
+      var i = f.swap[0], j = f.swap[1], dur = 900 / speed();
+      if (i !== j) {
+        [[f.ids[i], j, i, -1], [f.ids[j], i, j, 1]].forEach(function (s) {
+          var bx = boxes[s[0]], from = G.x(s[1]) - G.x(s[2]), lift = s[3] * (G.w * 0.9);
+          bx.animate([{ transform: "translate(" + from + "px,0)" }, { transform: "translate(" + from / 2 + "px," + lift + "px)" }, { transform: "translate(0,0)" }],
+            { duration: dur, easing: "ease-in-out" });
+        });
+      } else {
+        boxes[f.ids[i]].animate([{ transform: "scale(1)" }, { transform: "scale(1.15)" }, { transform: "scale(1)" }], { duration: dur * 0.7 });
+      }
+    }
+    // band 0..i
+    if (f.band !== null) {
+      band.classList.remove("hidden");
+      band.style.left = (G.x(0) - 6) + "px";
+      band.style.width = (G.x(f.band) + G.w + 12) + "px";
+    } else band.classList.add("hidden");
+    // arrows
+    place(arrowI, f.i, "i = " + f.i, G);
+    place(arrowJ, f.j, "j = " + f.j, G);
+    // code + vars
+    var lines = [].concat(f.line === null ? [] : f.line);
+    for (var c = 0; c < codeLines.length; c++) codeLines[c].classList.toggle("on", lines.indexOf(c) >= 0);
+    setVar("vI", f.i), setVar("vJ", f.j), setVar("vT", f.temp === null ? null : q(f.temp));
+    ["vI", "vJ", "vT"].forEach(function (id) { $(id).classList.remove("flash"); });
+    if (f.flash) $({ i: "vI", j: "vJ", temp: "vT" }[f.flash]).classList.add("flash");
+    $("arrText").textContent = "a = {" + f.a.map(q).join(", ") + "}";
+    $("msg").innerHTML = f.msg;
+    $("counter").textContent = "step " + pos + " / " + (frames.length - 1);
+    $("back").disabled = pos === 0;
+    $("step").disabled = pos === frames.length - 1;
+  }
+  function place(a, k, text, G) {
+    if (k === null) { a.classList.add("hidden"); return; }
+    a.classList.remove("hidden");
+    a.style.left = G.x(k) + "px";
+    a.querySelector(".lab").textContent = text;
+  }
+  function setVar(id, v) { $(id).lastElementChild.textContent = v === null ? "–" : v; }
+  function speed() { return [0.5, 0.75, 1, 1.6, 2.5][$("speed").value - 1]; }
+
+  // ---------- controls ----------
+  function step() { if (pos < frames.length - 1) { pos++; render(true); } else stop(); }
+  function back() { stop(); if (pos > 0) { pos--; render(false); } }
+  function play() {
+    if (timer) { stop(); return; }
+    if (pos === frames.length - 1) { pos = 0; render(false); }
+    $("play").textContent = "Pause";
+    (function tick() { timer = setTimeout(function () { step(); if (pos < frames.length - 1) tick(); else stop(); }, 1500 / speed()); })();
+  }
+  function stop() { clearTimeout(timer); timer = null; $("play").textContent = "Play"; }
+  function reset() { stop(); build(); render(false); }
+  function setMode(m) {
+    mode = m;
+    $("mTeach").setAttribute("aria-pressed", m === "teach");
+    $("mRand").setAttribute("aria-pressed", m === "rand");
+    $("reset").textContent = m === "rand" ? "New random run" : "Reset";
+    reset();
+  }
+  $("step").onclick = function () { stop(); step(); };
+  $("back").onclick = back;
+  $("play").onclick = play;
+  $("reset").onclick = reset;
+  $("mTeach").onclick = function () { setMode("teach"); };
+  $("mRand").onclick = function () { setMode("rand"); };
+  document.addEventListener("keydown", function (e) {
+    if (e.target.tagName === "INPUT" || e.target.tagName === "BUTTON" && e.key === " ") return;
+    if (e.key === "ArrowRight") { stop(); step(); e.preventDefault(); }
+    else if (e.key === "ArrowLeft") { back(); e.preventDefault(); }
+    else if (e.key === " ") { play(); e.preventDefault(); }
+  });
+  window.addEventListener("resize", function () { render(false); });
+
+  setup(); build(); render(false);
+
+  // ================= PART 2 =================
+  var ORDERS = ["abc", "acb", "bac", "bca", "cab", "cba"];
+  function fy(a, r) { for (var i = a.length - 1; i > 0; i--) { var j = r(i + 1), t = a[i]; a[i] = a[j]; a[j] = t; } return a.join(""); }
+  function biased(a, r) { for (var i = 0; i < a.length; i++) { var j = r(a.length), t = a[i]; a[i] = a[j]; a[j] = t; } return a.join(""); }
+
+  // exact counts: run every possible sequence of j values
+  function exact(kind) {
+    var counts = {}; ORDERS.forEach(function (o) { counts[o] = 0; });
+    var choices = kind === "fy" ? [3, 2] : [3, 3, 3], total = choices.reduce(function (p, c) { return p * c; }, 1);
+    for (var code = 0; code < total; code++) {
+      var digits = [], x = code;
+      choices.forEach(function (c) { digits.push(x % c); x = Math.floor(x / c); });
+      var k = 0, r = function () { return digits[k++]; };
+      counts[(kind === "fy" ? fy : biased)(["a", "b", "c"], r)]++;
+    }
+    return { counts: counts, total: total };
+  }
+
+  function css(v) { return getComputedStyle(document.documentElement).getPropertyValue(v).trim(); }
+  function bars(svg, values, opts) {
+    var W = 360, H = 200, L = 40, B = 34, T = 14, max = opts.max, bw = (W - L - 10) / 6;
+    var ink = css("--ink"), muted = css("--muted"), line = css("--line"), acc = css("--accent"), done = css("--done"), org = css("--orange");
+    var s = "";
+    opts.ticks.forEach(function (t) {
+      var y = H - B - (t / max) * (H - B - T);
+      s += '<line x1="' + L + '" x2="' + (W - 6) + '" y1="' + y + '" y2="' + y + '" stroke="' + line + '"/>' +
+           '<text x="' + (L - 6) + '" y="' + (y + 4) + '" text-anchor="end" font-size="11" fill="' + muted + '">' + opts.fmt(t) + '</text>';
+    });
+    ORDERS.forEach(function (o, k) {
+      var v = values[o], h = (v / max) * (H - B - T), x = L + k * bw + 6, y = H - B - h;
+      var col = opts.color(v);
+      s += '<rect x="' + x + '" y="' + y + '" width="' + (bw - 12) + '" height="' + h + '" rx="3" fill="' + col + '"/>' +
+           '<text x="' + (x + (bw - 12) / 2) + '" y="' + (y - 4) + '" text-anchor="middle" font-size="11" font-weight="600" fill="' + ink + '">' + opts.fmt(v, true) + '</text>' +
+           '<text x="' + (x + (bw - 12) / 2) + '" y="' + (H - B + 16) + '" text-anchor="middle" font-size="12" font-family="monospace" fill="' + ink + '">' + o + '</text>';
+    });
+    if (opts.expected !== undefined) {
+      var ye = H - B - (opts.expected / max) * (H - B - T);
+      s += '<line x1="' + L + '" x2="' + (W - 6) + '" y1="' + ye + '" y2="' + ye + '" stroke="' + ink + '" stroke-dasharray="5 4" stroke-width="1.5"/>';
+    }
+    s += '<line x1="' + L + '" x2="' + (W - 6) + '" y1="' + (H - B) + '" y2="' + (H - B) + '" stroke="' + muted + '"/>';
+    svg.innerHTML = s;
+    void acc; void done; void org;
+  }
+
+  function drawExact() {
+    var fyE = exact("fy"), bE = exact("biased");
+    var done = css("--done"), acc = css("--accent"), org = css("--orange");
+    bars($("exFY"), fyE.counts, { max: 6, ticks: [0, 2, 4, 6], fmt: function (v) { return String(v); }, color: function () { return done; } });
+    bars($("exB"), bE.counts, { max: 6, ticks: [0, 2, 4, 6], fmt: function (v) { return String(v); }, color: function (v) { return v > 4.5 ? org : acc; } });
+  }
+  var sim = null;
+  function drawSim() {
+    var done = css("--done"), acc = css("--accent"), org = css("--orange");
+    var empty = {}; ORDERS.forEach(function (o) { empty[o] = 0; });
+    var pf = function (v, label) { return label && v === 0 ? "" : (v * 100).toFixed(label ? 1 : 0) + "%"; };
+    var o1 = { max: 0.25, ticks: [0, 0.05, 0.1, 0.15, 0.2, 0.25], fmt: pf, expected: 1 / 6 };
+    bars($("simFY"), sim ? sim.fy : empty, Object.assign({}, o1, { color: function () { return done; } }));
+    bars($("simB"), sim ? sim.b : empty, Object.assign({}, o1, { color: function (v) { return v > 1 / 6 ? org : acc; } }));
+  }
+  $("sim").onclick = function () {
+    var R = 60000, r = function (m) { return Math.floor(Math.random() * m); };
+    var c1 = {}, c2 = {}; ORDERS.forEach(function (o) { c1[o] = 0; c2[o] = 0; });
+    for (var t = 0; t < R; t++) { c1[fy(["a", "b", "c"], r)]++; c2[biased(["a", "b", "c"], r)]++; }
+    sim = { fy: {}, b: {} };
+    ORDERS.forEach(function (o) { sim.fy[o] = c1[o] / R; sim.b[o] = c2[o] / R; });
+    drawSim();
+    $("sim").textContent = "Run 60,000 more";
+  };
+  drawExact(); drawSim();
+  if (window.matchMedia) window.matchMedia("(prefers-color-scheme: dark)").addEventListener("change", function () { drawExact(); drawSim(); });
+})();
+</script>
+</body>
+</html>
