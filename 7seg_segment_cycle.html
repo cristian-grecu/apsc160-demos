@@ -102,6 +102,7 @@
   .box .i{font:600 10px var(--mono);color:#9a988f}
   .box .s{font:700 15px var(--mono);line-height:1.2}
   .box .p{font:500 10px var(--mono);color:var(--muted)}
+  .box.clr{border-color:#8a8a90;background:#eeeeec}
   .box.cur{border-color:var(--seg);background:var(--seg-bg)}
   .box.cur .s{color:#c0261e}
   .memnote{font-size:12px;color:var(--muted);margin-top:8px}
@@ -193,6 +194,11 @@
       </div>
 
       <div class="code" id="code">
+        <div class="ln"><span class="no"></span><span><span class="kw">void</span> <span class="fn">setup</span>(<span class="kw">void</span>) {</span></div>
+        <div class="ln" id="LS1"><span class="no">S1</span><span>  <span class="fn">pinMode</span>(A, OUTPUT); <span class="cm">/* … H OUTPUT, PB INPUT */</span></span></div>
+        <div class="ln" id="LS2"><span class="no">S2</span><span>  <span class="fn">clearDisplay</span>();           <span class="cm">/* display starts OFF */</span></span></div>
+        <div class="ln"><span class="no"></span><span>}</span></div>
+        <div class="gap"></div>
         <div class="ln"><span class="no"></span><span><span class="kw">void</span> <span class="fn">loop</span>(<span class="kw">void</span>) {</span></div>
         <div class="ln run" id="L1"><span class="no">1</span><span>  <span class="kw">int</span> <span class="nm">pb_state</span> = <span class="fn">digitalRead</span>(PB);</span></div>
         <div class="ln run" id="L2"><span class="no">2</span><span id="L2txt"></span></div>
@@ -203,14 +209,18 @@
         <div class="ln"><span class="no"></span><span>}</span></div>
         <div class="gap"></div>
         <div class="ln"><span class="no"></span><span><span class="kw">void</span> <span class="fn">nextSegment</span>(<span class="kw">void</span>) {</span></div>
-        <div class="ln" id="L3a"><span class="no">3a</span><span>  <span class="kw">if</span> (<span class="nm">current_segment</span> &gt;= 0)</span></div>
+        <div class="ln" id="L3a"><span class="no">3a</span><span>  <span class="kw">if</span> (<span class="nm">current_segment</span> &gt;= 0) {</span></div>
         <div class="ln" id="L3a2"><span class="no"></span><span>    <span class="fn">digitalWrite</span>(segments[<span class="nm">current_segment</span>], LOW);</span></div>
+        <div class="ln"><span class="no"></span><span>  }</span></div>
         <div class="ln" id="L3b"><span class="no">3b</span><span>  <span class="nm">current_segment</span> = (<span class="nm">current_segment</span> + 1) % NUM_SEG;</span></div>
         <div class="ln" id="L3c"><span class="no">3c</span><span>  <span class="fn">digitalWrite</span>(segments[<span class="nm">current_segment</span>], HIGH);</span></div>
         <div class="ln"><span class="no"></span><span>}</span></div>
       </div>
 
       <div class="pseudo" id="pseudo">
+        <div class="ln" id="PS1"><span class="no">S1</span><span>Once, at power-on: set the segment pins as outputs, the button pin as input</span></div>
+        <div class="ln" id="PS2"><span class="no">S2</span><span>Once, at power-on: turn every segment OFF</span></div>
+        <div class="ln" style="min-height:0;padding:2px 10px"><span class="no"></span><span class="cm" style="font-size:12px">then, over and over:</span></div>
         <div class="ln" id="P1"><span class="no">1</span><span>Read the button</span></div>
         <div class="ln" id="P2"><span class="no">2</span><span id="P2txt"></span><span class="badge" id="pBadge"></span></div>
         <div class="ln" id="P3"><span class="no">3</span><span>If so: go to the next segment</span></div>
@@ -340,7 +350,7 @@
   function renderAll(){ renderHW(); renderMem(); renderCounters(); renderCode(); drawStrip(); }
   function caption(t, kind){ const c = $('caption'); c.innerHTML = t || '&nbsp;'; c.className = kind || ''; }
   function note(t){ $('note').innerHTML = t || ''; }
-  const LINES = ['L1','L2','L3','L3a','L3a2','L3b','L3c','L4'];
+  const LINES = ['LS1','LS2','L1','L2','L3','L3a','L3a2','L3b','L3c','L4'];
   function clearLines(){ LINES.forEach(id => $(id).classList.remove('cur','skip','hit')); }
   function hl(ids, cls){ ids.forEach(id => $(id).classList.add(cls || 'cur')); }
   function unhl(ids){ ids.forEach(id => $(id).classList.remove('cur','skip','hit')); }
@@ -535,16 +545,39 @@
     unhl(['L4']);
   }
 
+  async function runSetup(id){
+    S.slow = true; renderCode(); clearLines(); badge(''); drawStrip();
+    hl(['LS1']);
+    note('Setup S1: <b>pinMode()</b> makes the 8 segment pins outputs and pin 2 (the button) an input.');
+    await wait(2000, id);
+    unhl(['LS1']); hl(['LS2']);
+    note(codeShown() ? 'Setup S2: <b>clearDisplay()</b> writes LOW to every pin in segments[]…'
+                     : 'Setup S2: turn every segment OFF, one pin at a time…');
+    await wait(900, id);
+    for (let i = 0; i < N; i++){
+      $('bx'+i).classList.add('clr');
+      $('w'+i).setAttribute('class', 'wire thin hi'); $('w'+i).style.stroke = '#8a8a90';
+      await wait(260, id);
+      $('w'+i).style.stroke = ''; renderHW();
+      $('bx'+i).classList.remove('clr');
+    }
+    note('All 8 segments are OFF, so the display starts dark. <b>current_segment = −1</b> means no segment is on.');
+    await wait(2600, id);
+    unhl(['LS2']); note('');
+  }
+
   function press(v){ S.btn = v; renderHW(); }
   async function pressSlow(id, L, pre){ press(1); S.slow = true; renderCode(); drawStrip(); await wait(pre || 600, id); await slowPass(id, L); }
 
   /* ---------- scenes ---------- */
   const st = (o) => Object.assign({btn:0,pb:0,last:0,idx:-1,wrong:false}, o);
   const SCENES = [
-    { name:'Start', init:st({clear:true,resetCounts:true}),
+    { name:'Setup', init:st({clear:true,resetCounts:true}),
       run: async id => {
-        caption('At the start the display is OFF: current_segment = −1 (no segment is on).');
-        await fast(3800, id);
+        caption('Power on: setup() runs once and makes sure the display starts OFF.');
+        await runSetup(id);
+        caption('Then loop() runs over and over. Button up: nothing happens.');
+        await fast(3000, id);
       }},
     { name:'1st press', init:st({}),
       run: async id => {
@@ -618,6 +651,7 @@
     if (i.resetCounts){ S.changes = 0; S.passes = 0; }
     if (i.restore && savedSamples){ samples = savedSamples.samples.slice(); S.changes = savedSamples.changes; S.passes = savedSamples.passes; S.idx = S.lit = savedSamples.idx; }
     clearLines(); badge(''); note('');
+    for (let k = 0; k < N; k++){ $('bx'+k).classList.remove('clr'); $('w'+k).style.stroke = ''; }
     renderAll();
   }
   function renderChips(){
@@ -688,7 +722,7 @@
   document.addEventListener('keyup', e => { if (e.code === 'Space' && freeMode) press(0); });
 
   /* mirror highlights into the plain-English view; simplified badge */
-  const MAP = { L1:'P1', L2:'P2', L3:'P3', L3a:'P3a', L3b:'P3b', L3c:'P3c', L4:'P4' };
+  const MAP = { LS1:'PS1', LS2:'PS2', L1:'P1', L2:'P2', L3:'P3', L3a:'P3a', L3b:'P3b', L3c:'P3c', L4:'P4' };
   const mo = new MutationObserver(() => {
     for (const [l, p] of Object.entries(MAP)){
       const L = $(l), P = $(p);
