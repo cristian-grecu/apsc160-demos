@@ -1,0 +1,637 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>InClass 5 Q2 · Toggle segment a on each press</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#f6f5f2; --panel:#ffffff; --ink:#1d1d1f; --muted:#6b6b70; --line:#e3e1dc;
+    --high:#16a34a; --high-bg:#dcfce7; --low:#8a8a90; --low-bg:#eeeeec;
+    --seg:#ff3b30; --btn:#2563eb; --hl:#fff4c2; --bad:#dc2626; --bad-bg:#fee2e2;
+    --mono:'JetBrains Mono', ui-monospace, Menlo, Consolas, monospace;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.45 Inter,system-ui,-apple-system,Segoe UI,sans-serif}
+  .wrap{max-width:1180px;margin:0 auto;padding:18px 18px 28px}
+  header{display:flex;align-items:baseline;gap:14px;flex-wrap:wrap;margin-bottom:12px}
+  header h1{font-size:20px;margin:0;font-weight:700;letter-spacing:-.01em}
+  header .sub{color:var(--muted);font-size:14px}
+
+  .chips{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px}
+  .chip{border:1px solid var(--line);background:var(--panel);border-radius:999px;padding:4px 11px;font-size:13px;cursor:pointer;color:var(--muted);font-family:inherit}
+  .chip b{font-weight:600;margin-right:4px;color:var(--ink)}
+  .chip.on{background:var(--ink);color:#fff;border-color:var(--ink)}
+  .chip.on b{color:#fff}
+  .chip.done{color:var(--ink)}
+
+  .grid{display:grid;grid-template-columns:minmax(220px,1fr) minmax(330px,1.35fr) minmax(190px,.8fr);gap:12px}
+  @media (max-width:820px){.grid{grid-template-columns:1fr}}
+  .panel{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:14px;position:relative}
+  .panel h2{font-size:12px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin:0 0 10px;font-weight:600}
+
+  /* hardware */
+  #hw{width:100%;height:auto;display:block}
+  .seg-off{fill:#3b3b3e}
+  .seg-on{fill:var(--seg);filter:url(#glow)}
+  .wire{stroke:#b9b7b0;stroke-width:3;fill:none;transition:stroke .1s}
+  .wire.hi{stroke:var(--high)}
+  .wire.red{stroke:var(--seg)}
+  #finger{transition:transform .16s ease}
+  #cap{transition:fill .1s}
+  .hwlbl{font:600 11px var(--mono);fill:var(--muted)}
+  .hwbig{font:700 12px Inter,sans-serif;fill:#e9e9ea}
+  #btnHit{cursor:default}
+  body.free #btnHit{cursor:pointer}
+
+  /* code */
+  .code{font:13.5px/1.75 var(--mono);background:#fbfaf7;border:1px solid var(--line);border-radius:10px;padding:10px 0;overflow-x:auto}
+  .ln{display:flex;align-items:center;padding:0 12px;white-space:pre;border-left:4px solid transparent;transition:background .15s}
+  .ln .no{width:20px;color:#b0aea7;flex:none;font-size:11px}
+  .ln.cur{background:var(--hl);border-left-color:#e8b400}
+  .ln.skip{opacity:.35}
+  .ln.hit{background:#ffe1df;border-left-color:var(--seg)}
+  .fast .ln.run{animation:flick .11s steps(2) infinite}
+  @keyframes flick{0%{background:#f3f1ea}100%{background:transparent}}
+  .kw{color:#7c3aed}.cm{color:#9a988f;font-style:italic}.nm{color:#0f766e}.fn{color:#1d4ed8}
+  .badge{margin-left:10px;font:600 11.5px var(--mono);padding:1px 7px;border-radius:6px;display:inline-flex;gap:6px;align-items:center}
+  .badge:empty{visibility:hidden}
+  .badgeRow{min-height:26px}
+  .badgeRow .badge{margin-left:0}
+  .b-true{background:var(--high-bg);color:var(--high)}
+  .b-false{background:var(--low-bg);color:var(--low)}
+  .b-bad{background:var(--bad-bg);color:var(--bad)}
+  .chk{display:inline-flex;gap:4px}
+  .ok{color:var(--high)}.no2{color:var(--bad)}
+  #note{margin-top:10px;min-height:44px;font-size:14px;color:var(--ink);padding:8px 10px;border-radius:8px;background:#f4f3ef}
+  #note:empty{visibility:hidden}
+  #passes{position:absolute;top:12px;right:14px;font:600 12px var(--mono);color:var(--muted)}
+  #passes span{color:var(--ink)}
+
+  /* memory */
+  .cell{border:1px solid var(--line);border-radius:10px;padding:8px 10px;margin-bottom:8px;display:flex;justify-content:space-between;align-items:center}
+  .cell .name{font:600 13px var(--mono)}
+  .cell .val{font:700 13px var(--mono);padding:2px 9px;border-radius:6px}
+  .val.H{background:var(--high-bg);color:var(--high)}
+  .val.L{background:var(--low-bg);color:var(--low)}
+  .pop{animation:pop .45s ease}
+  @keyframes pop{0%{transform:scale(1)}35%{transform:scale(1.28)}100%{transform:scale(1)}}
+  .memnote{font-size:12px;color:var(--muted);margin-top:4px}
+
+  /* strip */
+  .stripPanel{margin-top:12px}
+  .stripHead{display:flex;justify-content:space-between;align-items:baseline;flex-wrap:wrap;gap:8px}
+  #changes{font:600 12px var(--mono);color:var(--muted)}
+  #changes span{color:var(--ink)}
+  #changes.bad span{color:var(--bad)}
+  #stripLabel{font-size:12px;font-weight:600;color:var(--bad);margin-left:8px}
+  canvas{width:100%;height:150px;display:block}
+
+  /* caption & controls */
+  #caption{margin-top:12px;background:var(--ink);color:#fff;border-radius:12px;padding:13px 16px;font-size:17px;font-weight:500;min-height:52px;display:flex;align-items:center}
+  #caption.bad{background:var(--bad)}
+  #caption.good{background:#14532d}
+  .controls{display:flex;gap:8px;margin-top:12px;flex-wrap:wrap;align-items:center}
+  .controls button,.controls select{font:600 13px Inter,sans-serif;border:1px solid var(--line);background:var(--panel);border-radius:9px;padding:7px 13px;cursor:pointer;color:var(--ink)}
+  .controls button.primary{background:var(--ink);color:#fff;border-color:var(--ink)}
+  .controls button.try.on{background:var(--btn);border-color:var(--btn);color:#fff}
+  .controls .hint{color:var(--muted);font-size:12px;margin-left:auto}
+
+  .codeHead{display:flex;align-items:center;gap:10px;margin-bottom:10px}
+  .codeHead h2{margin:0;white-space:nowrap}
+  .codeHead button,#passes{white-space:nowrap}
+  #codeToggle{font:600 12px Inter,sans-serif;border:1px solid var(--line);background:#fff;border-radius:8px;padding:4px 10px;cursor:pointer;color:var(--ink)}
+  #codeToggle.shown{background:var(--ink);color:#fff;border-color:var(--ink)}
+  #passes{position:static;margin-left:auto}
+  .pseudo{background:#fbfaf7;border:1px solid var(--line);border-radius:10px;padding:8px 0;font-size:14.5px}
+  .pseudo .ln{white-space:normal;padding:5px 12px;min-height:34px}
+  .pseudo .ln .no{font:600 12px var(--mono);color:#9a988f}
+  .pseudo .hiddenNote{font-size:12px;color:var(--muted);padding:6px 12px 2px}
+  body.hide-code #code{display:none}
+  body:not(.hide-code) #pseudo{display:none}
+  body.hide-code .ruleCode{display:none}
+  body:not(.hide-code) .rulePlain{display:none}
+  #rule{position:absolute;inset:0;display:none;align-items:center;justify-content:center;background:rgba(246,245,242,.86);border-radius:14px;z-index:3}
+  #rule.show{display:flex}
+  #rule div{background:#fff;border:2px solid var(--ink);border-radius:14px;padding:18px 22px;max-width:520px;text-align:center}
+  #rule code{font:700 15px var(--mono);display:block;margin:10px 0 6px;color:var(--ink)}
+  #rule p{margin:0;color:var(--muted);font-size:14px}
+</style>
+</head>
+<body class="hide-code">
+<div class="wrap">
+  <header>
+    <h1>Toggle segment a on each button press</h1>
+    <span class="sub">APSC 160 · In-class 5, Question 2 · edge detection</span>
+  </header>
+
+  <div class="chips" id="chips"></div>
+
+  <div class="grid">
+    <!-- HARDWARE -->
+    <section class="panel">
+      <h2>Hardware</h2>
+      <svg id="hw" viewBox="0 0 320 300" aria-label="Arduino, push-button on pin 2, 7-segment display with segment a on pin 11">
+        <defs>
+          <filter id="glow" x="-50%" y="-50%" width="200%" height="200%">
+            <feGaussianBlur stdDeviation="3" result="b"/>
+            <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+          </filter>
+        </defs>
+        <!-- Arduino -->
+        <rect x="8" y="34" width="92" height="232" rx="8" fill="#0f6e8c"/>
+        <text x="54" y="150" class="hwbig" text-anchor="middle" transform="rotate(-90 54 150)">Arduino Uno</text>
+        <rect x="92" y="74" width="12" height="12" fill="#222"/>
+        <rect x="92" y="194" width="12" height="12" fill="#222"/>
+        <text x="86" y="70" class="hwlbl" text-anchor="end" style="fill:#d9f1f7">2</text>
+        <text x="86" y="190" class="hwlbl" text-anchor="end" style="fill:#d9f1f7">11</text>
+        <!-- wires -->
+        <path id="wPB" class="wire" d="M104 80 H196"/>
+        <path id="wA" class="wire" d="M104 200 H170 V142 H207"/>
+        <text x="120" y="72" class="hwlbl">PB (pin 2)</text>
+        <text x="110" y="218" class="hwlbl">A (pin 11)</text>
+        <!-- push button -->
+        <g id="btnHit">
+          <rect x="196" y="56" width="56" height="48" rx="6" fill="#d8d6cf" stroke="#b9b7b0"/>
+          <circle cx="202" cy="62" r="2.5" fill="#999"/><circle cx="246" cy="62" r="2.5" fill="#999"/>
+          <circle cx="202" cy="98" r="2.5" fill="#999"/><circle cx="246" cy="98" r="2.5" fill="#999"/>
+          <circle id="cap" cx="224" cy="80" r="15" fill="#3f3f46"/>
+          <g id="finger" transform="translate(0,-34)">
+            <path d="M212 -6 V62 a12 12 0 0 0 24 0 V-6 Z" fill="#f2c9a5" stroke="#d9a982"/>
+            <path d="M216 50 a8 7 0 0 0 16 0 v-6 h-16 Z" fill="#fbe3d0"/>
+          </g>
+        </g>
+        <text x="262" y="84" class="hwlbl" id="btnTxt">up</text>
+        <!-- 7 segment display, local coords 0..120 x 0..200 -->
+        <g transform="translate(200,130) scale(.6)">
+          <rect x="-16" y="-12" width="168" height="220" rx="10" fill="#1f1f22"/>
+          <polygon id="sA" class="seg-off" points="22,10 98,10 108,20 98,30 22,30 12,20"/>
+          <polygon id="sB" class="seg-off" points="110,24 120,34 120,86 110,96 100,86 100,34"/>
+          <polygon id="sC" class="seg-off" points="110,104 120,114 120,166 110,176 100,166 100,114"/>
+          <polygon id="sD" class="seg-off" points="22,170 98,170 108,180 98,190 22,190 12,180"/>
+          <polygon id="sE" class="seg-off" points="10,104 20,114 20,166 10,176 0,166 0,114"/>
+          <polygon id="sF" class="seg-off" points="10,24 20,34 20,86 10,96 0,86 0,34"/>
+          <polygon id="sG" class="seg-off" points="22,90 98,90 108,100 98,110 22,110 12,100"/>
+          <circle id="sDP" class="seg-off" cx="136" cy="182" r="8"/>
+        </g>
+        <text x="180" y="136" class="hwlbl" text-anchor="middle">a</text>
+        <text x="236" y="285" class="hwlbl" text-anchor="middle">b–g, dp stay OFF</text>
+      </svg>
+    </section>
+
+    <!-- CODE -->
+    <section class="panel" id="codePanel">
+      <div class="codeHead">
+        <h2 id="codeTitle">What loop() does</h2>
+        <button id="codeToggle" title="Show or hide the C code (key: C)">Show code</button>
+        <div id="passes">pass # <span id="passN">0</span></div>
+      </div>
+      <div class="pseudo" id="pseudo">
+        <div class="ln" id="P1"><span class="no">1</span><span>Read the button</span></div>
+        <div class="ln" id="P2"><span class="no">2</span><span id="P2txt">Check: was the button up on the last pass, and is it down now?</span><span class="badge" id="pBadge"></span></div>
+        <div class="ln" id="P3"><span class="no">3</span><span>If so: toggle segment a</span></div>
+        <div class="ln" id="P4"><span class="no">4</span><span>Remember this reading for the next pass</span></div>
+        <div class="hiddenNote">The C code is hidden. Click “Show code” (or press C) to reveal it.</div>
+      </div>
+      <div class="code" id="code">
+        <div class="ln"><span class="no"></span><span><span class="kw">void</span> <span class="fn">loop</span>(<span class="kw">void</span>)</span></div>
+        <div class="ln"><span class="no"></span><span>{</span></div>
+        <div class="ln run" id="L1"><span class="no">1</span><span>  <span class="kw">int</span> <span class="nm">pb_state</span> = <span class="fn">digitalRead</span>(PB);</span></div>
+        <div class="ln run" id="L2"><span class="no">2</span><span id="L2txt"></span></div>
+        <div class="ln badgeRow"><span class="no"></span><span>      </span><span class="badge" id="badge"></span></div>
+        <div class="ln" id="L3"><span class="no">3</span><span>    <span class="cm">/* toggle segment a */</span></span></div>
+        <div class="ln"><span class="no"></span><span>  }</span></div>
+        <div class="ln run" id="L4"><span class="no">4</span><span>  <span class="nm">last_pb_state</span> = <span class="nm">pb_state</span>;</span></div>
+        <div class="ln"><span class="no"></span><span>}</span></div>
+      </div>
+      <div id="note"></div>
+    </section>
+
+    <!-- MEMORY -->
+    <section class="panel">
+      <h2>Memory</h2>
+      <div class="cell"><span class="name">pb_state</span><span class="val L" id="vPB">LOW</span></div>
+      <div class="cell"><span class="name">last_pb_state</span><span class="val L" id="vLast">LOW</span></div>
+      <div class="cell"><span class="name">segment_a_state</span><span class="val L" id="vSeg">LOW</span></div>
+      <div class="memnote">pb_state is fresh each pass; last_pb_state is what the button was on the <em>previous</em> pass.</div>
+    </section>
+  </div>
+
+  <!-- TIMING STRIP -->
+  <section class="panel stripPanel" id="stripPanel">
+    <div class="stripHead">
+      <h2 style="margin:0">Timing <span id="stripLabel"></span></h2>
+      <div id="changes">segment a changes: <span id="chN">0</span></div>
+    </div>
+    <canvas id="strip"></canvas>
+    <div id="rule"><div>
+      <strong>The rule</strong>
+      <code class="ruleCode">toggle only when last_pb_state == LOW &amp;&amp; pb_state == HIGH</code>
+      <code class="rulePlain">toggle only when the button was up on the last pass and is down now</code>
+      <p>One rising edge → one toggle. Holding or releasing the button changes nothing.</p>
+    </div></div>
+  </section>
+
+  <div id="caption">&nbsp;</div>
+
+  <div class="controls">
+    <button class="primary" id="playBtn">❚❚ Pause</button>
+    <button id="prevBtn">◀ Scene</button>
+    <button id="nextBtn">Scene ▶</button>
+    <button id="restartBtn">↺ Restart</button>
+    <select id="speed" aria-label="Speed">
+      <option value="0.5">0.5×</option>
+      <option value="1" selected>1×</option>
+      <option value="1.5">1.5×</option>
+      <option value="2">2×</option>
+    </select>
+    <button class="try" id="tryBtn">Try it yourself</button>
+    <span class="hint" id="hint">Space: play/pause · ←/→: scenes · C: code</span>
+  </div>
+</div>
+
+<script>
+(() => {
+  const $ = id => document.getElementById(id);
+  const HIGH = 1, LOW = 0;
+  const txt = v => v ? 'HIGH' : 'LOW';
+
+  /* ---------- state ---------- */
+  const S = { btn:0, pb:0, last:0, seg:0, wrong:false, passes:0, changes:0, slow:false };
+  let samples = [], savedSamples = null;
+  let playing = true, speedMul = 1, runId = 0, cur = 0, freeMode = false;
+  const CANCEL = Symbol('cancel');
+
+  /* ---------- code line 2 variants ---------- */
+  const L2_GOOD = `  <span class="kw">if</span> (<span class="nm">last_pb_state</span> == LOW &amp;&amp; <span class="nm">pb_state</span> == HIGH) {`;
+  const L2_BAD  = `  <span class="kw">if</span> (<span class="nm">pb_state</span> == HIGH) {`;
+
+  /* ---------- rendering ---------- */
+  function setVal(el, v, pop){
+    el.textContent = txt(v); el.className = 'val ' + (v ? 'H' : 'L');
+    if (pop){ void el.offsetWidth; el.classList.add('pop'); }
+  }
+  function renderHW(){
+    $('finger').setAttribute('transform', S.btn ? 'translate(0,0)' : 'translate(0,-34)');
+    $('cap').setAttribute('fill', S.btn ? '#1f1f23' : '#3f3f46');
+    $('btnTxt').textContent = S.btn ? 'pressed' : 'up';
+    $('wPB').classList.toggle('hi', !!S.btn);
+    $('wA').classList.toggle('red', !!S.seg);
+    $('sA').setAttribute('class', S.seg ? 'seg-on' : 'seg-off');
+  }
+  function renderMem(){ setVal($('vPB'), S.pb); setVal($('vLast'), S.last); setVal($('vSeg'), S.seg); }
+  function renderCounters(){
+    $('passN').textContent = S.passes.toLocaleString('en-US');
+    $('chN').textContent = S.changes.toLocaleString('en-US');
+    $('changes').classList.toggle('bad', S.wrong);
+  }
+  function renderCode(){
+    $('L2txt').innerHTML = S.wrong ? L2_BAD : L2_GOOD;
+    $('code').classList.toggle('fast', !S.slow);
+    $('pseudo').classList.toggle('fast', !S.slow);
+    $('P2txt').textContent = S.wrong ? 'Check: is the button down now? (no memory of the last pass)'
+                                     : 'Check: was the button up on the last pass, and is it down now?';
+  }
+  function renderAll(){ renderHW(); renderMem(); renderCounters(); renderCode(); drawStrip(); }
+  function caption(t, kind){ const c = $('caption'); c.innerHTML = t || '&nbsp;'; c.className = kind || ''; }
+  function note(t){ $('note').innerHTML = t || ''; }
+  function clearLines(){ ['L1','L2','L3','L4'].forEach(id => $(id).classList.remove('cur','skip','hit')); }
+  function badge(html, cls){ const b = $('badge'); b.innerHTML = html || ''; b.className = 'badge ' + (cls || ''); }
+
+  /* ---------- timing strip ---------- */
+  const cv = $('strip'), ctx = cv.getContext('2d');
+  const PX = 1.5;
+  function drawStrip(){
+    const dpr = window.devicePixelRatio || 1, w = cv.clientWidth, h = cv.clientHeight;
+    if (cv.width !== Math.round(w*dpr) || cv.height !== Math.round(h*dpr)){ cv.width = Math.round(w*dpr); cv.height = Math.round(h*dpr); }
+    ctx.setTransform(dpr,0,0,dpr,0,0); ctx.clearRect(0,0,w,h);
+    const x0 = 104, x1 = w - 10;
+    const rows = [{key:'b', name:'button (pin 2)', top:14, col:'#2563eb', fill:'rgba(37,99,235,.10)'},
+                  {key:'s', name:'segment a', top:84, col:'#ff3b30', fill:'rgba(255,59,48,.12)'}];
+    ctx.font = '600 12px Inter, sans-serif'; ctx.textBaseline = 'middle';
+    rows.forEach(r => {
+      const hi = r.top + 6, lo = r.top + 46;
+      ctx.fillStyle = '#1d1d1f'; ctx.fillText(r.name, 0, r.top + 26);
+      ctx.font = '600 10px JetBrains Mono, monospace'; ctx.fillStyle = '#9a988f';
+      ctx.fillText('HIGH', x0 - 34, hi); ctx.fillText('LOW', x0 - 34, lo);
+      ctx.font = '600 12px Inter, sans-serif';
+      ctx.strokeStyle = '#eceae4'; ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.moveTo(x0, lo); ctx.lineTo(x1, lo); ctx.moveTo(x0, hi); ctx.lineTo(x1, hi); ctx.stroke();
+    });
+    const maxN = Math.floor((x1 - x0) / PX);
+    if (samples.length > maxN + 2) samples.splice(0, samples.length - maxN - 2);
+    const n = samples.length;
+    const xOf = i => x1 - (n - 1 - i) * PX;
+    // edge markers
+    ctx.setLineDash([4,4]); ctx.strokeStyle = '#9a988f'; ctx.lineWidth = 1;
+    for (let i = 0; i < n; i++){ const x = xOf(i); if (x < x0) continue;
+      if (samples[i].e){ ctx.beginPath(); ctx.moveTo(x, 16); ctx.lineTo(x, 134); ctx.stroke(); } }
+    ctx.setLineDash([]);
+    rows.forEach(r => {
+      const hi = r.top + 6, lo = r.top + 46;
+      ctx.strokeStyle = r.col; ctx.lineWidth = 2.2; ctx.fillStyle = r.fill;
+      let started = false, py = lo;
+      ctx.beginPath();
+      for (let i = 0; i < n; i++){
+        const x = xOf(i); if (x < x0 - PX) continue;
+        const y = samples[i][r.key] ? hi : lo;
+        if (!started){ ctx.moveTo(Math.max(x, x0), y); started = true; }
+        else { ctx.lineTo(x, py); ctx.lineTo(x, y); }
+        py = y;
+      }
+      if (started) ctx.stroke();
+      // fill high areas
+      for (let i = 0; i < n; i++){ const x = xOf(i); if (x < x0) continue;
+        if (samples[i][r.key]) ctx.fillRect(x, hi, PX + .3, lo - hi); }
+    });
+    if (S.slow){
+      ctx.fillStyle = '#b45309'; ctx.font = '600 12px Inter, sans-serif'; ctx.textAlign = 'right';
+      ctx.fillText('⏸ slow motion: time frozen (a real pass takes microseconds)', x1, 76); ctx.textAlign = 'left';
+    }
+  }
+  function pushSample(edge){ samples.push({ b:S.btn, s:S.seg, e:!!edge }); }
+  window.addEventListener('resize', drawStrip);
+
+  /* ---------- timing helpers ---------- */
+  const frame = () => new Promise(r => requestAnimationFrame(r));
+  const check = id => { if (id !== runId) throw CANCEL; };
+  async function wait(ms, id){
+    let t = 0, prev = performance.now();
+    while (t < ms){ await frame(); check(id); const now = performance.now(); if (playing) t += (now - prev) * speedMul; prev = now; }
+  }
+
+  /* one logical pass at full speed (used in fast mode) */
+  let hitTimer = null;
+  function fastPass(){
+    const burst = 1400 + Math.floor(Math.random() * 400);   // cosmetic: ~100k passes/s
+    S.passes += burst;
+    S.pb = S.btn;
+    const cond = S.wrong ? S.pb === HIGH : (S.last === LOW && S.pb === HIGH);
+    let edge = false;
+    if (cond){
+      S.seg ^= 1;
+      if (S.wrong){ S.changes += burst; }
+      else { S.changes += 1; edge = true; }
+      $('L3').classList.add('hit'); clearTimeout(hitTimer);
+      hitTimer = setTimeout(() => $('L3').classList.remove('hit'), S.wrong ? 120 : 450);
+      badge(S.wrong ? 'true' : 'true · rising edge', S.wrong ? 'b-bad' : 'b-true');
+    } else if (!$('L3').classList.contains('hit')) {
+      badge('false', 'b-false');
+    }
+    S.last = S.pb;
+    pushSample(edge);
+    renderHW(); renderMem(); renderCounters(); drawStrip();
+  }
+  async function fast(ms, id){
+    S.slow = false; renderCode(); clearLines(); note('');
+    let t = 0, prev = performance.now();
+    while (t < ms){ await frame(); check(id); const now = performance.now();
+      if (playing){ t += (now - prev) * speedMul; fastPass(); } prev = now; }
+  }
+
+  /* one pass line by line (slow motion) */
+  async function slowPass(id, L){
+    S.slow = true; renderCode(); clearLines(); badge('');
+    $('L3').classList.remove('hit');
+    pushSample(false); drawStrip();            // button step appears on the strip
+    S.passes += 1; renderCounters();
+
+    // line 1
+    $('L1').classList.add('cur');
+    note(`Line 1: read pin 2. The button is ${S.btn ? '<b>down</b>' : '<b>up</b>'}…`);
+    await wait(L*0.6, id);
+    S.pb = S.btn; setVal($('vPB'), S.pb, true);
+    note(`Line 1: read pin 2 → <b>pb_state = ${txt(S.pb)}</b>`);
+    await wait(L, id);
+
+    // line 2
+    $('L1').classList.remove('cur'); $('L2').classList.add('cur');
+    note('Line 2: was the button up on the last pass, and is it down now?');
+    const c1 = S.last === LOW, c2 = S.pb === HIGH;
+    badge(`<span class="chk">last==LOW <span class="${c1?'ok':'no2'}">${c1?'✓':'✗'}</span></span>`, 'b-false');
+    await wait(L*0.7, id);
+    badge(`<span class="chk">last==LOW <span class="${c1?'ok':'no2'}">${c1?'✓':'✗'}</span></span>
+           <span class="chk">pb==HIGH <span class="${c2?'ok':'no2'}">${c2?'✓':'✗'}</span></span>`, 'b-false');
+    await wait(L*0.7, id);
+    const cond = c1 && c2;
+    badge(`${c1?'✓':'✗'} ${c2?'✓':'✗'} → <b>${cond}</b>`, cond ? 'b-true' : 'b-false');
+    note(cond ? 'Line 2: <b>true</b>, this is a <b>rising edge</b> (LOW → HIGH).'
+              : (S.pb === HIGH ? 'Line 2: <b>false</b>. The button is still down, but it was already down last pass. No new edge.'
+                               : (S.last === HIGH ? 'Line 2: <b>false</b>. This is a falling edge (HIGH → LOW), not a press.'
+                                                  : 'Line 2: <b>false</b>. Button is up.')));
+    await wait(L*1.1, id);
+
+    // line 3
+    $('L2').classList.remove('cur');
+    if (cond){
+      $('L3').classList.add('cur');
+      S.seg ^= 1; S.changes += 1;
+      samples[samples.length - 1].s = S.seg; samples[samples.length - 1].e = true;
+      setVal($('vSeg'), S.seg, true); renderHW(); renderCounters(); drawStrip();
+      note(`Line 3: toggle → <b>segment_a_state = ${txt(S.seg)}</b>, so pin 11 drives segment a <b>${S.seg ? 'ON' : 'OFF'}</b>.`);
+      await wait(L*1.2, id);
+      $('L3').classList.remove('cur');
+    } else {
+      $('L3').classList.add('skip');
+      note('Line 3: <b>skipped</b>. Segment a is unchanged.');
+      await wait(L*0.9, id);
+      $('L3').classList.remove('skip');
+    }
+
+    // line 4
+    $('L4').classList.add('cur');
+    S.last = S.pb; setVal($('vLast'), S.last, true);
+    note(`Line 4: remember this reading for the next pass → <b>last_pb_state = ${txt(S.last)}</b>`);
+    await wait(L*1.1, id);
+    $('L4').classList.remove('cur');
+  }
+
+  function press(v){ S.btn = v; renderHW(); }
+
+  /* ---------- scenes ---------- */
+  const SCENES = [
+    { name:'Idle', init:{btn:0,pb:0,last:0,seg:0,wrong:false,clear:true,resetCounts:true},
+      run: async id => {
+        caption('loop() runs over and over, thousands of times per second. Button up: nothing happens.');
+        await fast(3800, id);
+      }},
+    { name:'Press', init:{btn:0,pb:0,last:0,seg:0,wrong:false},
+      run: async id => {
+        caption('Press! Let’s slow down and follow the very next pass of loop().');
+        await fast(250, id); press(1); S.slow = true; renderCode(); drawStrip();
+        await wait(900, id);
+        await slowPass(id, 1150);
+        caption('Rising edge detected → segment a toggles <b>&nbsp;ON</b>.', 'good');
+        await wait(2200, id);
+      }},
+    { name:'Hold', init:{btn:1,pb:1,last:1,seg:1,wrong:false},
+      run: async id => {
+        caption('Still holding the button… here is the next pass, in slow motion:');
+        await wait(600, id);
+        await slowPass(id, 1000);
+        caption('Still pressed, but <b>&nbsp;no new edge</b>, so no toggle. Back to full speed:');
+        await fast(3200, id);
+      }},
+    { name:'Release', init:{btn:1,pb:1,last:1,seg:1,wrong:false},
+      run: async id => {
+        caption('Release the button…');
+        press(0); S.slow = true; renderCode(); drawStrip();
+        await wait(800, id);
+        await slowPass(id, 1000);
+        caption('Releasing does nothing; we only react to the press. Segment a stays ON.');
+        await fast(2600, id);
+      }},
+    { name:'2nd press', init:{btn:0,pb:0,last:0,seg:1,wrong:false},
+      run: async id => {
+        caption('Second press, a bit faster this time:');
+        press(1); S.slow = true; renderCode(); drawStrip();
+        await wait(500, id);
+        await slowPass(id, 600);
+        caption('Another rising edge → segment a toggles <b>&nbsp;OFF</b>.', 'good');
+        await fast(900, id); press(0); await fast(1600, id);
+      }},
+    { name:'Replay', init:{btn:0,pb:0,last:0,seg:0,wrong:false},
+      run: async id => {
+        caption('Full speed: one toggle per press. Holding and releasing change nothing.');
+        const seq = [[1,320],[0,750],[1,260],[0,800],[1,1900],[0,700],[1,300],[0,1300]];
+        for (const [b, ms] of seq){ press(b); await fast(ms, id); }
+        savedSamples = { samples: samples.slice(), changes: S.changes, passes: S.passes, seg: S.seg };
+      }},
+    { name:'Wrong way', init:{btn:0,pb:0,last:0,seg:0,wrong:true,clear:true,resetCounts:true},
+      run: async id => {
+        $('stripLabel').textContent = 'if you skip edge detection';
+        caption('What if we toggle whenever the button reads HIGH, with no edge detection?', 'bad');
+        await fast(1400, id);
+        caption('Holding the button: segment a flips on <b>&nbsp;every&nbsp;</b> pass…', 'bad');
+        press(1); await fast(2200, id);
+        press(0); await fast(1200, id);
+        caption('Toggling on HIGH instead of on the edge: the grader counts every one of these changes.', 'bad');
+        await wait(3200, id);
+      }},
+    { name:'The rule', init:{btn:0,pb:0,last:0,seg:0,wrong:false,restore:true},
+      run: async id => {
+        caption('One press → one toggle. That is edge detection.', 'good');
+        $('rule').classList.add('show');
+        await wait(1e9, id);
+      }},
+  ];
+
+  function applyInit(sc){
+    const i = sc.init;
+    Object.assign(S, { btn:i.btn, pb:i.pb, last:i.last, seg:i.seg, wrong:i.wrong, slow:false });
+    $('rule').classList.remove('show');
+    $('stripLabel').textContent = '';
+    if (i.clear) samples = [];
+    if (i.resetCounts){ S.changes = 0; S.passes = 0; }
+    if (i.restore){
+      if (savedSamples){ samples = savedSamples.samples.slice(); S.changes = savedSamples.changes; S.passes = savedSamples.passes; S.seg = savedSamples.seg; }
+    }
+    clearLines(); badge(''); note('');
+    renderAll();
+  }
+
+  function renderChips(){
+    const box = $('chips'); box.innerHTML = '';
+    SCENES.forEach((sc, k) => {
+      const b = document.createElement('button');
+      b.className = 'chip' + (k === cur && !freeMode ? ' on' : (k < cur ? ' done' : ''));
+      b.innerHTML = `<b>${k+1}</b>${sc.name}`;
+      b.onclick = () => go(k);
+      box.appendChild(b);
+    });
+  }
+
+  async function runFrom(k){
+    const id = ++runId;
+    try {
+      for (let j = k; j < SCENES.length; j++){
+        cur = j; renderChips(); applyInit(SCENES[j]);
+        // when jumping into the middle, give the strip a little history
+        await SCENES[j].run(id);
+      }
+    } catch (e){ if (e !== CANCEL) console.error(e); }
+  }
+
+  function go(k){
+    k = Math.max(0, Math.min(SCENES.length - 1, k));
+    setFree(false);
+    setPlaying(true);
+    runFrom(k);
+  }
+
+  /* ---------- try-it mode ---------- */
+  async function freeRun(id){
+    try { while (true) await fast(1e9, id); } catch (e){ if (e !== CANCEL) console.error(e); }
+  }
+  function setFree(on){
+    freeMode = on;
+    document.body.classList.toggle('free', on);
+    $('tryBtn').classList.toggle('on', on);
+    $('tryBtn').textContent = on ? 'Back to the animation' : 'Try it yourself';
+    $('hint').textContent = on ? 'Hold the button (click or Space). Try long holds!' : 'Space: play/pause · ←/→: scenes · C: code';
+    if (on){
+      const id = ++runId;
+      Object.assign(S, { btn:0, pb:0, last:0, seg:0, wrong:false, slow:false, passes:0, changes:0 });
+      samples = []; $('rule').classList.remove('show'); $('stripLabel').textContent = '';
+      clearLines(); badge(''); note('');
+      caption('Your turn: press and hold the button. Watch the strip: one toggle per press.');
+      renderAll(); renderChips(); setPlaying(true);
+      freeRun(id);
+    }
+  }
+  const hit = $('btnHit');
+  hit.addEventListener('pointerdown', e => { if (freeMode){ e.preventDefault(); press(1); hit.setPointerCapture(e.pointerId); } });
+  hit.addEventListener('pointerup',   () => { if (freeMode) press(0); });
+  hit.addEventListener('pointercancel', () => { if (freeMode) press(0); });
+
+  /* ---------- controls ---------- */
+  function setPlaying(p){ playing = p; $('playBtn').textContent = p ? '❚❚ Pause' : '▶ Play'; }
+  $('playBtn').onclick = () => setPlaying(!playing);
+  $('prevBtn').onclick = () => go(freeMode ? 0 : cur - 1);
+  $('nextBtn').onclick = () => go(freeMode ? 0 : cur + 1);
+  $('restartBtn').onclick = () => go(0);
+  $('speed').onchange = e => { speedMul = parseFloat(e.target.value); };
+  $('tryBtn').onclick = () => { if (freeMode) go(0); else setFree(true); };
+  document.addEventListener('keydown', e => {
+    if (e.target.tagName === 'SELECT') return;
+    if (e.code === 'Space'){ e.preventDefault(); if (freeMode){ if (!e.repeat) press(1); } else setPlaying(!playing); }
+    else if (e.key === 'ArrowRight' && !freeMode) go(cur + 1);
+    else if (e.key === 'ArrowLeft' && !freeMode) go(cur - 1);
+  });
+  document.addEventListener('keyup', e => { if (e.code === 'Space' && freeMode) press(0); });
+
+  /* mirror line highlights + a simplified badge into the plain-English view */
+  const mo = new MutationObserver(() => {
+    for (let n = 1; n <= 4; n++){
+      const L = $('L' + n), P = $('P' + n);
+      ['cur','skip','hit'].forEach(c => P.classList.toggle(c, L.classList.contains(c)));
+      P.classList.toggle('run', L.classList.contains('run'));
+    }
+    const b = $('badge'), pb = $('pBadge');
+    if (!b.innerHTML){ pb.innerHTML = ''; pb.className = 'badge'; return; }
+    const isTrue = b.classList.contains('b-true') || b.classList.contains('b-bad') || /\btrue\b/.test(b.textContent);
+    const done = /true|false/.test(b.textContent);
+    pb.textContent = done ? (isTrue ? 'yes' : 'no') : '…';
+    pb.className = 'badge ' + (done ? (isTrue ? (b.classList.contains('b-bad') ? 'b-bad' : 'b-true') : 'b-false') : 'b-false');
+  });
+  ['L1','L2','L3','L4','badge'].forEach(id => mo.observe($(id), { attributes:true, childList:true, subtree:true, characterData:true }));
+
+  function setCodeShown(on){
+    document.body.classList.toggle('hide-code', !on);
+    $('codeToggle').textContent = on ? 'Hide code' : 'Show code';
+    $('codeToggle').classList.toggle('shown', on);
+    $('codeTitle').textContent = on ? 'The code: loop()' : 'What loop() does';
+  }
+  $('codeToggle').onclick = () => setCodeShown(document.body.classList.contains('hide-code'));
+  document.addEventListener('keydown', e => {
+    if ((e.key === 'c' || e.key === 'C') && !e.metaKey && !e.ctrlKey) setCodeShown(document.body.classList.contains('hide-code'));
+  });
+
+  renderAll();
+  runFrom(0);
+})();
+</script>
+</body>
+</html>
