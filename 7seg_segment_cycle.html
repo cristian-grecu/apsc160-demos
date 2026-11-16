@@ -1,0 +1,690 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Cycle the 7-segment display with a push-button</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#f6f5f2; --panel:#ffffff; --ink:#1d1d1f; --muted:#6b6b70; --line:#e3e1dc;
+    --high:#16a34a; --high-bg:#dcfce7; --low:#8a8a90; --low-bg:#eeeeec;
+    --seg:#ff3b30; --seg-bg:#ffe1df; --btn:#2563eb; --hl:#fff4c2; --bad:#dc2626; --bad-bg:#fee2e2;
+    --mono:'JetBrains Mono', ui-monospace, Menlo, Consolas, monospace;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.45 Inter,system-ui,-apple-system,Segoe UI,sans-serif}
+  .wrap{max-width:1180px;margin:0 auto;padding:18px 18px 28px}
+  header{display:flex;align-items:baseline;gap:14px;flex-wrap:wrap;margin-bottom:12px}
+  header h1{font-size:20px;margin:0;font-weight:700;letter-spacing:-.01em}
+  header .sub{color:var(--muted);font-size:14px}
+
+  .chips{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px}
+  .chip{border:1px solid var(--line);background:var(--panel);border-radius:999px;padding:4px 11px;font-size:13px;cursor:pointer;color:var(--muted);font-family:inherit}
+  .chip b{font-weight:600;margin-right:4px;color:var(--ink)}
+  .chip.on{background:var(--ink);color:#fff;border-color:var(--ink)}
+  .chip.on b{color:#fff}
+  .chip.done{color:var(--ink)}
+
+  .grid{display:grid;grid-template-columns:minmax(220px,.95fr) minmax(340px,1.45fr) minmax(210px,.85fr);gap:12px}
+  @media (max-width:840px){.grid{grid-template-columns:1fr}}
+  .panel{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:14px;position:relative;min-width:0}
+  .panel h2{font-size:12px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin:0 0 10px;font-weight:600}
+
+  /* hardware */
+  #hw{width:100%;height:auto;display:block}
+  .seg-off{fill:#3b3b3e}
+  .seg-on{fill:var(--seg);filter:url(#glow)}
+  .seg-dim{fill:#9b3a35}
+  .wire{stroke:#b9b7b0;stroke-width:3;fill:none;transition:stroke .1s}
+  .wire.thin{stroke-width:2}
+  .wire.hi{stroke:var(--high)}
+  .wire.red{stroke:var(--seg);stroke-width:3}
+  .wire.dim{stroke:#e8a29d}
+  #finger{transition:transform .16s ease}
+  #cap{transition:fill .1s}
+  .hwlbl{font:600 11px var(--mono);fill:var(--muted)}
+  .pinlbl{font:600 9.5px var(--mono);fill:#d9f1f7}
+  .pinlbl.on{fill:#fff}
+  .hwbig{font:700 12px Inter,sans-serif;fill:#e9e9ea}
+  body.free #btnHit{cursor:pointer}
+
+  /* code */
+  .codeHead{display:flex;align-items:center;gap:10px;margin-bottom:10px}
+  .codeHead h2{margin:0;white-space:nowrap}
+  #codeToggle{font:600 12px Inter,sans-serif;border:1px solid var(--line);background:#fff;border-radius:8px;padding:4px 10px;cursor:pointer;color:var(--ink);white-space:nowrap}
+  #codeToggle.shown{background:var(--ink);color:#fff;border-color:var(--ink)}
+  #passes{margin-left:auto;font:600 12px var(--mono);color:var(--muted);white-space:nowrap}
+  #passes span{color:var(--ink)}
+  .code{font:12.5px/1.7 var(--mono);background:#fbfaf7;border:1px solid var(--line);border-radius:10px;padding:8px 0;overflow-x:auto}
+  .ln{display:flex;align-items:center;padding:0 10px;white-space:pre;border-left:4px solid transparent;transition:background .15s}
+  .ln .no{width:24px;color:#b0aea7;flex:none;font-size:10.5px}
+  .ln.cur{background:var(--hl);border-left-color:#e8b400}
+  .ln.skip{opacity:.35}
+  .ln.hit{background:var(--seg-bg);border-left-color:var(--seg)}
+  .fast .ln.run{animation:flick .11s steps(2) infinite}
+  @keyframes flick{0%{background:#f3f1ea}100%{background:transparent}}
+  .kw{color:#7c3aed}.cm{color:#9a988f;font-style:italic}.nm{color:#0f766e}.fn{color:#1d4ed8}
+  .gap{height:8px}
+  .badge{font:600 11.5px var(--mono);padding:1px 7px;border-radius:6px;display:inline-flex;gap:6px;align-items:center}
+  .badge:empty{visibility:hidden}
+  .badgeRow{min-height:24px}
+  .b-true{background:var(--high-bg);color:var(--high)}
+  .b-false{background:var(--low-bg);color:var(--low)}
+  .b-bad{background:var(--bad-bg);color:var(--bad)}
+  .ok{color:var(--high)}.no2{color:var(--bad)}
+  #note{margin-top:10px;min-height:44px;font-size:14px;padding:8px 10px;border-radius:8px;background:#f4f3ef}
+  #note:empty{visibility:hidden}
+  .pseudo{background:#fbfaf7;border:1px solid var(--line);border-radius:10px;padding:8px 0;font-size:14px}
+  .pseudo .ln{white-space:normal;padding:4px 10px;min-height:30px}
+  .pseudo .ln.sub{padding-left:34px;font-size:13.5px;color:#3a3a3e}
+  .pseudo .ln .no{font:600 11px var(--mono);color:#9a988f}
+  .pseudo .badge{margin-left:auto}
+  .pseudo .hiddenNote{font-size:12px;color:var(--muted);padding:6px 10px 2px}
+  body.hide-code #code{display:none}
+  body:not(.hide-code) #pseudo{display:none}
+  body.hide-code #rule .ruleCode{display:none}
+  body:not(.hide-code) #rule .rulePlain{display:none}
+
+  /* memory */
+  .cell{border:1px solid var(--line);border-radius:10px;padding:7px 10px;margin-bottom:8px;display:flex;justify-content:space-between;align-items:center;gap:8px}
+  .cell .name{font:600 12.5px var(--mono)}
+  .cell .val{font:700 13px var(--mono);padding:2px 9px;border-radius:6px}
+  .val.H{background:var(--high-bg);color:var(--high)}
+  .val.L{background:var(--low-bg);color:var(--low)}
+  .val.N{background:var(--seg-bg);color:#c0261e}
+  .pop{animation:pop .45s ease}
+  @keyframes pop{0%{transform:scale(1)}35%{transform:scale(1.28)}100%{transform:scale(1)}}
+  .arrTitle{font:600 12.5px var(--mono);margin:12px 0 6px}
+  .arr{display:grid;grid-template-columns:repeat(4,1fr);gap:5px}
+  .box{border:1.5px solid var(--line);border-radius:8px;padding:4px 0;text-align:center;transition:all .15s;background:#fff}
+  .box .i{font:600 10px var(--mono);color:#9a988f}
+  .box .s{font:700 15px var(--mono);line-height:1.2}
+  .box .p{font:500 10px var(--mono);color:var(--muted)}
+  .box.cur{border-color:var(--seg);background:var(--seg-bg)}
+  .box.cur .s{color:#c0261e}
+  .memnote{font-size:12px;color:var(--muted);margin-top:8px}
+
+  /* strip */
+  .stripPanel{margin-top:12px}
+  .stripHead{display:flex;justify-content:space-between;align-items:baseline;flex-wrap:wrap;gap:8px}
+  #changes{font:600 12px var(--mono);color:var(--muted)}
+  #changes span{color:var(--ink)}
+  #changes.bad span{color:var(--bad)}
+  #stripLabel{font-size:12px;font-weight:600;color:var(--bad);margin-left:8px}
+  canvas{width:100%;height:220px;display:block}
+
+  #caption{margin-top:12px;background:var(--ink);color:#fff;border-radius:12px;padding:13px 16px;font-size:17px;font-weight:500;min-height:52px;display:flex;align-items:center}
+  #caption.bad{background:var(--bad)}
+  #caption.good{background:#14532d}
+  .controls{display:flex;gap:8px;margin-top:12px;flex-wrap:wrap;align-items:center}
+  .controls button,.controls select{font:600 13px Inter,sans-serif;border:1px solid var(--line);background:var(--panel);border-radius:9px;padding:7px 13px;cursor:pointer;color:var(--ink)}
+  .controls button.primary{background:var(--ink);color:#fff;border-color:var(--ink)}
+  .controls button.try.on{background:var(--btn);border-color:var(--btn);color:#fff}
+  .controls .hint{color:var(--muted);font-size:12px;margin-left:auto}
+
+  #rule{position:absolute;inset:0;display:none;align-items:center;justify-content:center;background:rgba(246,245,242,.86);border-radius:14px;z-index:3}
+  #rule.show{display:flex}
+  #rule div{background:#fff;border:2px solid var(--ink);border-radius:14px;padding:18px 22px;max-width:560px;text-align:center}
+  #rule code{font:700 15px var(--mono);display:block;margin:10px 0 6px}
+  #rule p{margin:0;color:var(--muted);font-size:14px}
+</style>
+</head>
+<body class="hide-code">
+<div class="wrap">
+  <header>
+    <h1>Cycle through the segments with a push-button</h1>
+    <span class="sub">APSC 160 · In-class 5, Question 3 · a → b → … → g → dp → a</span>
+  </header>
+
+  <div class="chips" id="chips"></div>
+
+  <div class="grid">
+    <!-- HARDWARE -->
+    <section class="panel">
+      <h2>Hardware</h2>
+      <svg id="hw" viewBox="0 0 320 300" aria-label="Arduino, push-button on pin 2, 7-segment display on pins 11,10,7,8,9,12,13,6">
+        <defs>
+          <filter id="glow" x="-50%" y="-50%" width="200%" height="200%">
+            <feGaussianBlur stdDeviation="3" result="b"/>
+            <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+          </filter>
+        </defs>
+        <rect x="8" y="34" width="92" height="232" rx="8" fill="#0f6e8c"/>
+        <text x="30" y="150" class="hwbig" text-anchor="middle" transform="rotate(-90 30 150)">Arduino Uno</text>
+        <rect x="92" y="74" width="12" height="12" fill="#222"/>
+        <text x="86" y="84" class="pinlbl" text-anchor="end">PB 2</text>
+        <g id="pins"></g>
+        <path id="wPB" class="wire" d="M104 80 H196"/>
+        <text x="120" y="72" class="hwlbl">pin 2</text>
+        <g id="btnHit">
+          <rect x="196" y="56" width="56" height="48" rx="6" fill="#d8d6cf" stroke="#b9b7b0"/>
+          <circle cx="202" cy="62" r="2.5" fill="#999"/><circle cx="246" cy="62" r="2.5" fill="#999"/>
+          <circle cx="202" cy="98" r="2.5" fill="#999"/><circle cx="246" cy="98" r="2.5" fill="#999"/>
+          <circle id="cap" cx="224" cy="80" r="15" fill="#3f3f46"/>
+          <g id="finger" transform="translate(0,-34)">
+            <path d="M212 -6 V62 a12 12 0 0 0 24 0 V-6 Z" fill="#f2c9a5" stroke="#d9a982"/>
+            <path d="M216 50 a8 7 0 0 0 16 0 v-6 h-16 Z" fill="#fbe3d0"/>
+          </g>
+        </g>
+        <text x="262" y="84" class="hwlbl" id="btnTxt">up</text>
+        <g transform="translate(200,130) scale(.6)">
+          <rect x="-16" y="-12" width="168" height="220" rx="10" fill="#1f1f22"/>
+          <polygon id="s0" class="seg-off" points="22,10 98,10 108,20 98,30 22,30 12,20"/>
+          <polygon id="s1" class="seg-off" points="110,24 120,34 120,86 110,96 100,86 100,34"/>
+          <polygon id="s2" class="seg-off" points="110,104 120,114 120,166 110,176 100,166 100,114"/>
+          <polygon id="s3" class="seg-off" points="22,170 98,170 108,180 98,190 22,190 12,180"/>
+          <polygon id="s4" class="seg-off" points="10,104 20,114 20,166 10,176 0,166 0,114"/>
+          <polygon id="s5" class="seg-off" points="10,24 20,34 20,86 10,96 0,86 0,34"/>
+          <polygon id="s6" class="seg-off" points="22,90 98,90 108,100 98,110 22,110 12,100"/>
+          <circle id="s7" class="seg-off" cx="136" cy="182" r="8"/>
+        </g>
+        <text x="245" y="282" class="hwlbl" text-anchor="middle" id="activeTxt">all segments OFF</text>
+      </svg>
+    </section>
+
+    <!-- CODE -->
+    <section class="panel">
+      <div class="codeHead">
+        <h2 id="codeTitle">What the code does</h2>
+        <button id="codeToggle" title="Show or hide the C code (key: C)">Show code</button>
+        <div id="passes">pass # <span id="passN">0</span></div>
+      </div>
+
+      <div class="code" id="code">
+        <div class="ln"><span class="no"></span><span><span class="kw">void</span> <span class="fn">loop</span>(<span class="kw">void</span>) {</span></div>
+        <div class="ln run" id="L1"><span class="no">1</span><span>  <span class="kw">int</span> <span class="nm">pb_state</span> = <span class="fn">digitalRead</span>(PB);</span></div>
+        <div class="ln run" id="L2"><span class="no">2</span><span id="L2txt"></span></div>
+        <div class="ln badgeRow"><span class="no"></span><span>      </span><span class="badge" id="badge"></span></div>
+        <div class="ln" id="L3"><span class="no">3</span><span>    <span class="fn">nextSegment</span>();</span></div>
+        <div class="ln"><span class="no"></span><span>  }</span></div>
+        <div class="ln run" id="L4"><span class="no">4</span><span>  <span class="nm">last_pb_state</span> = <span class="nm">pb_state</span>;</span></div>
+        <div class="ln"><span class="no"></span><span>}</span></div>
+        <div class="gap"></div>
+        <div class="ln"><span class="no"></span><span><span class="kw">void</span> <span class="fn">nextSegment</span>(<span class="kw">void</span>) {</span></div>
+        <div class="ln" id="L3a"><span class="no">3a</span><span>  <span class="kw">if</span> (<span class="nm">current_segment</span> &gt;= 0)</span></div>
+        <div class="ln" id="L3a2"><span class="no"></span><span>    <span class="fn">digitalWrite</span>(segments[<span class="nm">current_segment</span>], LOW);</span></div>
+        <div class="ln" id="L3b"><span class="no">3b</span><span>  <span class="nm">current_segment</span> = (<span class="nm">current_segment</span> + 1) % NUM_SEG;</span></div>
+        <div class="ln" id="L3c"><span class="no">3c</span><span>  <span class="fn">digitalWrite</span>(segments[<span class="nm">current_segment</span>], HIGH);</span></div>
+        <div class="ln"><span class="no"></span><span>}</span></div>
+      </div>
+
+      <div class="pseudo" id="pseudo">
+        <div class="ln" id="P1"><span class="no">1</span><span>Read the button</span></div>
+        <div class="ln" id="P2"><span class="no">2</span><span id="P2txt"></span><span class="badge" id="pBadge"></span></div>
+        <div class="ln" id="P3"><span class="no">3</span><span>If so: go to the next segment</span></div>
+        <div class="ln sub" id="P3a"><span class="no">3a</span><span>Turn OFF the segment that is on (if any)</span></div>
+        <div class="ln sub" id="P3b"><span class="no">3b</span><span>Move to the next segment (after dp, back to a)</span></div>
+        <div class="ln sub" id="P3c"><span class="no">3c</span><span>Turn ON the new segment</span></div>
+        <div class="ln" id="P4"><span class="no">4</span><span>Remember this reading for the next pass</span></div>
+        <div class="hiddenNote">The C code is hidden. Click “Show code” (or press C) to reveal it.</div>
+      </div>
+      <div id="note"></div>
+    </section>
+
+    <!-- MEMORY -->
+    <section class="panel">
+      <h2>Memory</h2>
+      <div class="cell"><span class="name">pb_state</span><span class="val L" id="vPB">LOW</span></div>
+      <div class="cell"><span class="name">last_pb_state</span><span class="val L" id="vLast">LOW</span></div>
+      <div class="cell"><span class="name">current_segment</span><span class="val L" id="vIdx">-1</span></div>
+      <div class="arrTitle">segments[ ]</div>
+      <div class="arr" id="arr"></div>
+      <div class="memnote">current_segment is an index into segments[]. −1 means no segment is on.</div>
+    </section>
+  </div>
+
+  <section class="panel stripPanel">
+    <div class="stripHead">
+      <h2 style="margin:0">Timing <span id="stripLabel"></span></h2>
+      <div id="changes">segment changes: <span id="chN">0</span></div>
+    </div>
+    <canvas id="strip"></canvas>
+    <div id="rule"><div>
+      <strong>The rule</strong>
+      <code class="ruleCode">nextSegment() only when last_pb_state == LOW &amp;&amp; pb_state == HIGH</code>
+      <code class="rulePlain">move to the next segment only when the button was up on the last pass and is down now</code>
+      <p>One press → one step: a, b, c, d, e, f, g, dp, then back to a.</p>
+    </div></div>
+  </section>
+
+  <div id="caption">&nbsp;</div>
+
+  <div class="controls">
+    <button class="primary" id="playBtn">❚❚ Pause</button>
+    <button id="prevBtn">◀ Scene</button>
+    <button id="nextBtn">Scene ▶</button>
+    <button id="restartBtn">↺ Restart</button>
+    <select id="speed" aria-label="Speed">
+      <option value="0.5">0.5×</option>
+      <option value="1" selected>1×</option>
+      <option value="1.5">1.5×</option>
+      <option value="2">2×</option>
+    </select>
+    <button class="try" id="tryBtn">Try it yourself</button>
+    <span class="hint" id="hint">Space: play/pause · ←/→: scenes · C: code</span>
+  </div>
+</div>
+
+<script>
+(() => {
+  const $ = id => document.getElementById(id);
+  const HIGH = 1, LOW = 0, N = 8;
+  const txt = v => v ? 'HIGH' : 'LOW';
+  const NAMES = ['a','b','c','d','e','f','g','dp'];
+  const PINS  = [11,10,7,8,9,12,13,6];
+  const segName = i => i < 0 ? 'none' : NAMES[i];
+  const codeShown = () => !document.body.classList.contains('hide-code');
+
+  /* ---------- state ---------- */
+  const S = { btn:0, pb:0, last:0, idx:-1, lit:-1, dim:false, wrong:false, passes:0, changes:0, slow:false };
+  let samples = [], savedSamples = null;
+  let playing = true, speedMul = 1, runId = 0, cur = 0, freeMode = false;
+  const CANCEL = Symbol('cancel');
+
+  const L2_GOOD = `  <span class="kw">if</span> (<span class="nm">last_pb_state</span> == LOW &amp;&amp; <span class="nm">pb_state</span> == HIGH) {`;
+  const L2_BAD  = `  <span class="kw">if</span> (<span class="nm">pb_state</span> == HIGH) {`;
+
+  /* ---------- build pins + array ---------- */
+  (function build(){
+    const g = $('pins'); let h = '';
+    for (let i = 0; i < N; i++){
+      const y = 140 + i*14, yd = 150 + i*12;
+      h += `<path id="w${i}" class="wire thin" d="M104 ${y+6} L190 ${yd}"/>`;
+      h += `<rect x="92" y="${y}" width="12" height="12" fill="#222"/>`;
+      h += `<text id="pl${i}" x="86" y="${y+9.5}" class="pinlbl" text-anchor="end">${NAMES[i]} ${PINS[i]}</text>`;
+    }
+    g.innerHTML = h;
+    $('arr').innerHTML = NAMES.map((n,i) => `<div class="box" id="bx${i}"><div class="i">[${i}]</div><div class="s">${n}</div><div class="p">pin ${PINS[i]}</div></div>`).join('');
+  })();
+
+  /* ---------- rendering ---------- */
+  function setVal(el, v, pop){
+    el.textContent = txt(v); el.className = 'val ' + (v ? 'H' : 'L');
+    if (pop){ void el.offsetWidth; el.classList.add('pop'); }
+  }
+  function setIdx(pop){
+    const el = $('vIdx'); el.textContent = String(S.idx); el.className = 'val ' + (S.idx < 0 ? 'L' : 'N');
+    if (pop){ void el.offsetWidth; el.classList.add('pop'); }
+    for (let i = 0; i < N; i++) $('bx'+i).classList.toggle('cur', i === S.idx);
+    if (pop && S.idx >= 0){ const b = $('bx'+S.idx); b.classList.remove('pop'); void b.offsetWidth; b.classList.add('pop'); }
+  }
+  function renderHW(){
+    $('finger').setAttribute('transform', S.btn ? 'translate(0,0)' : 'translate(0,-34)');
+    $('cap').setAttribute('fill', S.btn ? '#1f1f23' : '#3f3f46');
+    $('btnTxt').textContent = S.btn ? 'pressed' : 'up';
+    $('wPB').classList.toggle('hi', !!S.btn);
+    for (let i = 0; i < N; i++){
+      const on = S.dim ? false : i === S.lit;
+      $('s'+i).setAttribute('class', S.dim ? 'seg-dim' : (on ? 'seg-on' : 'seg-off'));
+      $('w'+i).setAttribute('class', 'wire thin' + (S.dim ? ' dim' : (on ? ' red' : '')));
+      $('pl'+i).setAttribute('class', 'pinlbl' + (on ? ' on' : ''));
+    }
+    $('activeTxt').textContent = S.dim ? 'spinning: all look dim'
+      : (S.lit < 0 ? 'all segments OFF' : `pin ${PINS[S.lit]} HIGH → segment ${NAMES[S.lit]}`);
+  }
+  function renderMem(){ setVal($('vPB'), S.pb); setVal($('vLast'), S.last); setIdx(false); }
+  function renderCounters(){
+    $('passN').textContent = S.passes.toLocaleString('en-US');
+    $('chN').textContent = S.changes.toLocaleString('en-US');
+    $('changes').classList.toggle('bad', S.wrong);
+  }
+  function renderCode(){
+    $('L2txt').innerHTML = S.wrong ? L2_BAD : L2_GOOD;
+    $('P2txt').textContent = S.wrong ? 'Check: is the button down now? (no memory of the last pass)'
+                                     : 'Check: was the button up on the last pass, and is it down now?';
+    $('code').classList.toggle('fast', !S.slow);
+    $('pseudo').classList.toggle('fast', !S.slow);
+  }
+  function renderAll(){ renderHW(); renderMem(); renderCounters(); renderCode(); drawStrip(); }
+  function caption(t, kind){ const c = $('caption'); c.innerHTML = t || '&nbsp;'; c.className = kind || ''; }
+  function note(t){ $('note').innerHTML = t || ''; }
+  const LINES = ['L1','L2','L3','L3a','L3a2','L3b','L3c','L4'];
+  function clearLines(){ LINES.forEach(id => $(id).classList.remove('cur','skip','hit')); }
+  function hl(ids, cls){ ids.forEach(id => $(id).classList.add(cls || 'cur')); }
+  function unhl(ids){ ids.forEach(id => $(id).classList.remove('cur','skip','hit')); }
+  function badge(html, cls){ const b = $('badge'); b.innerHTML = html || ''; b.className = 'badge ' + (cls || ''); }
+
+  /* ---------- timing strip ---------- */
+  const cv = $('strip'), ctx = cv.getContext('2d');
+  const PX = 1.5;
+  function drawStrip(){
+    const dpr = window.devicePixelRatio || 1, w = cv.clientWidth, h = cv.clientHeight;
+    if (cv.width !== Math.round(w*dpr) || cv.height !== Math.round(h*dpr)){ cv.width = Math.round(w*dpr); cv.height = Math.round(h*dpr); }
+    ctx.setTransform(dpr,0,0,dpr,0,0); ctx.clearRect(0,0,w,h);
+    const x0 = 112, x1 = w - 10;
+    // button lane
+    const bHi = 14, bLo = 50;
+    // segment lane: level k (0 = off, 1..8 = a..dp)
+    const sTop = 76, step = 15.5;
+    const yS = idx => sTop + (8 - (idx + 1)) * step;
+    ctx.textBaseline = 'middle';
+    ctx.font = '600 12px Inter, sans-serif'; ctx.fillStyle = '#1d1d1f';
+    ctx.fillText('button (pin 2)', 0, (bHi + bLo) / 2);
+    ctx.fillText('segment on', 0, yS(3));
+    ctx.font = '600 10px JetBrains Mono, monospace'; ctx.fillStyle = '#9a988f';
+    ctx.fillText('HIGH', x0 - 36, bHi); ctx.fillText('LOW', x0 - 36, bLo);
+    ctx.strokeStyle = '#eceae4'; ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(x0, bHi); ctx.lineTo(x1, bHi); ctx.moveTo(x0, bLo); ctx.lineTo(x1, bLo); ctx.stroke();
+    for (let k = -1; k < N; k++){
+      const y = yS(k);
+      ctx.fillStyle = '#9a988f'; ctx.textAlign = 'right';
+      ctx.fillText(k < 0 ? 'off' : NAMES[k], x0 - 8, y); ctx.textAlign = 'left';
+      ctx.strokeStyle = '#f1efe9'; ctx.beginPath(); ctx.moveTo(x0, y); ctx.lineTo(x1, y); ctx.stroke();
+    }
+    const maxN = Math.floor((x1 - x0) / PX);
+    if (samples.length > maxN + 2) samples.splice(0, samples.length - maxN - 2);
+    const n = samples.length;
+    const xOf = i => x1 - (n - 1 - i) * PX;
+    ctx.setLineDash([4,4]); ctx.strokeStyle = '#9a988f';
+    for (let i = 0; i < n; i++){ const x = xOf(i); if (x < x0) continue;
+      if (samples[i].e){ ctx.beginPath(); ctx.moveTo(x, bHi); ctx.lineTo(x, yS(-1)); ctx.stroke(); } }
+    ctx.setLineDash([]);
+    const trace = (val, col, fill, base) => {
+      ctx.strokeStyle = col; ctx.lineWidth = 2.2;
+      let started = false, py = 0; ctx.beginPath();
+      for (let i = 0; i < n; i++){
+        const x = xOf(i); if (x < x0 - PX) continue;
+        const y = val(samples[i]);
+        if (!started){ ctx.moveTo(Math.max(x, x0), y); started = true; } else { ctx.lineTo(x, py); ctx.lineTo(x, y); }
+        py = y;
+      }
+      if (started) ctx.stroke();
+      if (fill){ ctx.fillStyle = fill; for (let i = 0; i < n; i++){ const x = xOf(i); if (x < x0) continue; const y = val(samples[i]); if (y < base) ctx.fillRect(x, y, PX + .3, base - y); } }
+    };
+    trace(s => s.b ? bHi : bLo, '#2563eb', 'rgba(37,99,235,.10)', bLo);
+    trace(s => yS(s.s), '#ff3b30', 'rgba(255,59,48,.10)', yS(-1));
+    if (S.slow){
+      ctx.fillStyle = '#b45309'; ctx.font = '600 12px Inter, sans-serif'; ctx.textAlign = 'right';
+      ctx.fillText('⏸ slow motion: time frozen (a real pass takes microseconds)', x1, bLo + 13); ctx.textAlign = 'left';
+    }
+  }
+  function pushSample(edge){ samples.push({ b:S.btn, s:S.lit, e:!!edge }); }
+  window.addEventListener('resize', drawStrip);
+
+  /* ---------- timing helpers ---------- */
+  const frame = () => new Promise(r => requestAnimationFrame(r));
+  const check = id => { if (id !== runId) throw CANCEL; };
+  async function wait(ms, id){
+    let t = 0, prev = performance.now();
+    while (t < ms){ await frame(); check(id); const now = performance.now(); if (playing) t += (now - prev) * speedMul; prev = now; }
+  }
+
+  let hitTimer = null;
+  function fastPass(){
+    const burst = 1400 + Math.floor(Math.random() * 400);
+    S.passes += burst;
+    S.pb = S.btn;
+    const cond = S.wrong ? S.pb === HIGH : (S.last === LOW && S.pb === HIGH);
+    let edge = false;
+    if (cond){
+      if (S.wrong){ S.idx = (S.idx + burst) % N; S.changes += burst; S.dim = true; }
+      else { S.idx = (S.idx + 1) % N; S.changes += 1; edge = true; }
+      S.lit = S.idx;
+      hl(['L3','L3a','L3a2','L3b','L3c'], 'hit'); clearTimeout(hitTimer);
+      hitTimer = setTimeout(() => unhl(['L3','L3a','L3a2','L3b','L3c']), S.wrong ? 120 : 450);
+      badge(S.wrong ? 'true' : 'true · rising edge', S.wrong ? 'b-bad' : 'b-true');
+    } else {
+      S.dim = false;
+      if (!$('L3').classList.contains('hit')) badge('false', 'b-false');
+    }
+    S.last = S.pb;
+    pushSample(edge);
+    renderHW(); renderMem(); renderCounters(); drawStrip();
+  }
+  async function fast(ms, id){
+    S.slow = false; renderCode(); clearLines(); note('');
+    let t = 0, prev = performance.now();
+    while (t < ms){ await frame(); check(id); const now = performance.now();
+      if (playing){ t += (now - prev) * speedMul; fastPass(); } prev = now; }
+  }
+
+  /* one pass line by line (slow motion) */
+  async function slowPass(id, L){
+    S.slow = true; S.dim = false; renderCode(); clearLines(); badge('');
+    pushSample(false); drawStrip();
+    S.passes += 1; renderCounters();
+
+    hl(['L1']);
+    note(`Step 1: read pin 2. The button is <b>${S.btn ? 'down' : 'up'}</b>…`);
+    await wait(L*0.5, id);
+    S.pb = S.btn; setVal($('vPB'), S.pb, true);
+    note(`Step 1: read pin 2 → <b>pb_state = ${txt(S.pb)}</b>`);
+    await wait(L*0.9, id);
+
+    unhl(['L1']); hl(['L2']);
+    note('Step 2: was the button up on the last pass, and is it down now?');
+    const c1 = S.last === LOW, c2 = S.pb === HIGH, cond = c1 && c2;
+    badge(`last==LOW <span class="${c1?'ok':'no2'}">${c1?'✓':'✗'}</span>`, 'b-false');
+    await wait(L*0.6, id);
+    badge(`last==LOW <span class="${c1?'ok':'no2'}">${c1?'✓':'✗'}</span>&nbsp; pb==HIGH <span class="${c2?'ok':'no2'}">${c2?'✓':'✗'}</span>`, 'b-false');
+    await wait(L*0.6, id);
+    badge(`${c1?'✓':'✗'} ${c2?'✓':'✗'} → <b>${cond}</b>`, cond ? 'b-true' : 'b-false');
+    note(cond ? 'Step 2: <b>true</b>, a <b>rising edge</b> (LOW → HIGH).'
+              : (S.pb === HIGH ? 'Step 2: <b>false</b>. Still down, but it was already down last pass. No new edge.'
+                               : (S.last === HIGH ? 'Step 2: <b>false</b>. That is a release (HIGH → LOW), not a press.'
+                                                  : 'Step 2: <b>false</b>. The button is up.')));
+    await wait(L*1.0, id);
+    unhl(['L2']);
+
+    if (cond){
+      hl(['L3']); note('Step 3: go to the next segment.');
+      await wait(L*0.7, id);
+      // 3a
+      hl(['L3a','L3a2']);
+      if (S.idx >= 0){
+        const old = S.idx; S.lit = -1; renderHW();
+        note(`Step 3a: turn OFF segment <b>${NAMES[old]}</b> (pin ${PINS[old]} LOW).`);
+      } else {
+        $('L3a2').classList.replace('cur','skip');
+        note('Step 3a: current_segment is <b>−1</b>, so nothing is on yet. Nothing to turn off.');
+      }
+      await wait(L*1.1, id);
+      unhl(['L3a','L3a2']);
+      // 3b
+      hl(['L3b']);
+      const old = S.idx, nw = (S.idx + 1) % N, wrapped = old === N - 1;
+      S.idx = nw; setIdx(true);
+      if (codeShown()) note(`Step 3b: (${old} + 1) % NUM_SEG = (${old + 1}) % ${N} = <b>${nw}</b>` + (wrapped ? '. It <b>wraps around</b> to 0!' : '.'));
+      else note(wrapped ? `Step 3b: index ${old} (dp) → <b>${nw}</b>. After the last segment we <b>wrap back</b> to a.`
+                        : `Step 3b: index ${old} → <b>${nw}</b> (segment ${NAMES[nw]}).`);
+      await wait(L*(wrapped ? 2.0 : 1.1), id);
+      unhl(['L3b']);
+      // 3c
+      hl(['L3c']);
+      S.lit = S.idx; S.changes += 1;
+      samples[samples.length - 1].s = S.lit; samples[samples.length - 1].e = true;
+      renderHW(); renderCounters(); drawStrip();
+      note(`Step 3c: segments[${S.idx}] is pin ${PINS[S.idx]} → <b>segment ${NAMES[S.idx]} ON</b>.`);
+      await wait(L*1.1, id);
+      unhl(['L3c','L3']);
+    } else {
+      hl(['L3'], 'skip');
+      note('Step 3: <b>skipped</b>. The display does not change.');
+      await wait(L*0.9, id);
+      unhl(['L3']);
+    }
+
+    hl(['L4']);
+    S.last = S.pb; setVal($('vLast'), S.last, true);
+    note(`Step 4: remember this reading → <b>last_pb_state = ${txt(S.last)}</b>`);
+    await wait(L*1.0, id);
+    unhl(['L4']);
+  }
+
+  function press(v){ S.btn = v; renderHW(); }
+  async function pressSlow(id, L, pre){ press(1); S.slow = true; renderCode(); drawStrip(); await wait(pre || 600, id); await slowPass(id, L); }
+
+  /* ---------- scenes ---------- */
+  const st = (o) => Object.assign({btn:0,pb:0,last:0,idx:-1,wrong:false}, o);
+  const SCENES = [
+    { name:'Start', init:st({clear:true,resetCounts:true}),
+      run: async id => {
+        caption('At the start the display is OFF: current_segment = −1 (no segment is on).');
+        await fast(3800, id);
+      }},
+    { name:'1st press', init:st({}),
+      run: async id => {
+        caption('First press. Let’s follow the next pass of loop() in slow motion.');
+        await fast(250, id);
+        await pressSlow(id, 1150, 900);
+        caption('First press → <b>&nbsp;segment a&nbsp;</b> lights up.', 'good');
+        await wait(1800, id);
+        caption('Release: nothing changes.');
+        press(0); await fast(1300, id);
+      }},
+    { name:'2nd press', init:st({idx:0}),
+      run: async id => {
+        caption('Second press: watch a turn OFF and b turn ON.');
+        await pressSlow(id, 850, 500);
+        caption('a → <b>&nbsp;b</b>. One press, one step.', 'good');
+        await fast(700, id); press(0); await fast(1000, id);
+      }},
+    { name:'Hold', init:st({idx:1}),
+      run: async id => {
+        caption('Press and <b>&nbsp;hold</b>. Does it keep advancing?');
+        press(1); await fast(500, id);
+        caption('It moved to c. Still holding… here is the next pass, in slow motion:');
+        await wait(500, id);
+        await slowPass(id, 850);
+        caption('No new edge, so it stays on c, however long you hold.');
+        await fast(2600, id); press(0); await fast(900, id);
+      }},
+    { name:'d → g', init:st({idx:2}),
+      run: async id => {
+        caption('Each tap moves exactly one step: d, e, f, g.');
+        for (let k = 0; k < 4; k++){ press(1); await fast(300, id); press(0); await fast(750, id); }
+      }},
+    { name:'Wrap-around', init:st({idx:6}),
+      run: async id => {
+        caption('Segment g is on. The next press lights the decimal point (dp).');
+        await fast(1200, id); press(1); await fast(350, id); press(0); await fast(1100, id);
+        caption('Now dp is on (index 7, the last one). What comes next? Slow motion:');
+        await wait(800, id);
+        await pressSlow(id, 1000, 600);
+        caption('After dp the index wraps from 7 back to 0: <b>&nbsp;segment a&nbsp;</b> again.', 'good');
+        await wait(2000, id);
+        press(0); await fast(1000, id);
+        savedSamples = { samples: samples.slice(), changes: S.changes, passes: S.passes, idx: S.idx };
+      }},
+    { name:'Wrong way', init:st({wrong:true,clear:true,resetCounts:true}),
+      run: async id => {
+        $('stripLabel').textContent = 'if you skip edge detection';
+        caption('What if we go to the next segment whenever the button reads HIGH (no edge detection)?', 'bad');
+        await fast(1300, id);
+        caption('Holding: it races through the segments thousands of times a second. They all look dimly lit.', 'bad');
+        press(1); await fast(2400, id);
+        caption('Release: it stops on a random segment. The grader counts every one of these changes.', 'bad');
+        press(0); await fast(900, id);
+        await wait(2600, id);
+      }},
+    { name:'The rule', init:st({restore:true,keep:true}),
+      run: async id => {
+        caption('One press → one step. That is edge detection.', 'good');
+        $('rule').classList.add('show');
+        await wait(1e9, id);
+      }},
+  ];
+
+  function applyInit(sc){
+    const i = sc.init;
+    if (i.keep) Object.assign(S, { btn:0, pb:0, last:0, wrong:false, slow:false, dim:false });
+    else Object.assign(S, { btn:i.btn, pb:i.pb, last:i.last, idx:i.idx, lit:i.idx, wrong:i.wrong, slow:false, dim:false });
+    $('rule').classList.remove('show'); $('stripLabel').textContent = '';
+    if (i.clear) samples = [];
+    if (i.resetCounts){ S.changes = 0; S.passes = 0; }
+    if (i.restore && savedSamples){ samples = savedSamples.samples.slice(); S.changes = savedSamples.changes; S.passes = savedSamples.passes; S.idx = S.lit = savedSamples.idx; }
+    clearLines(); badge(''); note('');
+    renderAll();
+  }
+  function renderChips(){
+    const box = $('chips'); box.innerHTML = '';
+    SCENES.forEach((sc, k) => {
+      const b = document.createElement('button');
+      b.className = 'chip' + (k === cur && !freeMode ? ' on' : (k < cur ? ' done' : ''));
+      b.innerHTML = `<b>${k+1}</b>${sc.name}`;
+      b.onclick = () => go(k);
+      box.appendChild(b);
+    });
+  }
+  async function runFrom(k){
+    const id = ++runId;
+    try {
+      for (let j = k; j < SCENES.length; j++){ cur = j; renderChips(); applyInit(SCENES[j]); await SCENES[j].run(id); }
+    } catch (e){ if (e !== CANCEL) console.error(e); }
+  }
+  function go(k){ k = Math.max(0, Math.min(SCENES.length - 1, k)); setFree(false); setPlaying(true); runFrom(k); }
+
+  /* ---------- try-it mode ---------- */
+  async function freeRun(id){ try { while (true) await fast(1e9, id); } catch (e){ if (e !== CANCEL) console.error(e); } }
+  function setFree(on){
+    freeMode = on;
+    document.body.classList.toggle('free', on);
+    $('tryBtn').classList.toggle('on', on);
+    $('tryBtn').textContent = on ? 'Back to the animation' : 'Try it yourself';
+    $('hint').textContent = on ? 'Press the button (click or Space). Try long holds!' : 'Space: play/pause · ←/→: scenes · C: code';
+    if (on){
+      const id = ++runId;
+      Object.assign(S, { btn:0, pb:0, last:0, idx:-1, lit:-1, dim:false, wrong:false, slow:false, passes:0, changes:0 });
+      samples = []; $('rule').classList.remove('show'); $('stripLabel').textContent = '';
+      clearLines(); badge(''); note('');
+      caption('Your turn: press the button. Each press should move exactly one segment.');
+      renderAll(); renderChips(); setPlaying(true);
+      freeRun(id);
+    }
+  }
+  const hit = $('btnHit');
+  hit.addEventListener('pointerdown', e => { if (freeMode){ e.preventDefault(); press(1); hit.setPointerCapture(e.pointerId); } });
+  hit.addEventListener('pointerup', () => { if (freeMode) press(0); });
+  hit.addEventListener('pointercancel', () => { if (freeMode) press(0); });
+
+  /* ---------- controls ---------- */
+  function setPlaying(p){ playing = p; $('playBtn').textContent = p ? '❚❚ Pause' : '▶ Play'; }
+  $('playBtn').onclick = () => setPlaying(!playing);
+  $('prevBtn').onclick = () => go(freeMode ? 0 : cur - 1);
+  $('nextBtn').onclick = () => go(freeMode ? 0 : cur + 1);
+  $('restartBtn').onclick = () => go(0);
+  $('speed').onchange = e => { speedMul = parseFloat(e.target.value); };
+  $('tryBtn').onclick = () => { if (freeMode) go(0); else setFree(true); };
+
+  function setCodeShown(on){
+    document.body.classList.toggle('hide-code', !on);
+    $('codeToggle').textContent = on ? 'Hide code' : 'Show code';
+    $('codeToggle').classList.toggle('shown', on);
+    $('codeTitle').textContent = on ? 'The code' : 'What the code does';
+  }
+  $('codeToggle').onclick = () => setCodeShown(!codeShown());
+
+  document.addEventListener('keydown', e => {
+    if (e.target.tagName === 'SELECT' || e.metaKey || e.ctrlKey) return;
+    if (e.code === 'Space'){ e.preventDefault(); if (freeMode){ if (!e.repeat) press(1); } else setPlaying(!playing); }
+    else if (e.key === 'ArrowRight' && !freeMode) go(cur + 1);
+    else if (e.key === 'ArrowLeft' && !freeMode) go(cur - 1);
+    else if (e.key === 'c' || e.key === 'C') setCodeShown(!codeShown());
+  });
+  document.addEventListener('keyup', e => { if (e.code === 'Space' && freeMode) press(0); });
+
+  /* mirror highlights into the plain-English view; simplified badge */
+  const MAP = { L1:'P1', L2:'P2', L3:'P3', L3a:'P3a', L3b:'P3b', L3c:'P3c', L4:'P4' };
+  const mo = new MutationObserver(() => {
+    for (const [l, p] of Object.entries(MAP)){
+      const L = $(l), P = $(p);
+      ['cur','skip','hit','run'].forEach(c => P.classList.toggle(c, L.classList.contains(c)));
+    }
+    if ($('L3a2').classList.contains('skip')) $('P3a').classList.replace('cur','skip');
+    const b = $('badge'), pb = $('pBadge');
+    if (!b.innerHTML){ pb.innerHTML = ''; pb.className = 'badge'; return; }
+    const done = /true|false/.test(b.textContent);
+    const isTrue = /\btrue\b/.test(b.textContent);
+    pb.textContent = done ? (isTrue ? 'yes' : 'no') : '…';
+    pb.className = 'badge ' + (done ? (isTrue ? (b.classList.contains('b-bad') ? 'b-bad' : 'b-true') : 'b-false') : 'b-false');
+  });
+  [...LINES, 'badge'].forEach(id => mo.observe($(id), { attributes:true, childList:true, subtree:true, characterData:true }));
+
+  renderAll();
+  runFrom(0);
+})();
+</script>
+</body>
+</html>
