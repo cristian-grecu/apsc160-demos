@@ -353,36 +353,39 @@
     const dpr = window.devicePixelRatio || 1, w = cv.clientWidth, h = cv.clientHeight;
     if (cv.width !== Math.round(w*dpr) || cv.height !== Math.round(h*dpr)){ cv.width = Math.round(w*dpr); cv.height = Math.round(h*dpr); }
     ctx.setTransform(dpr,0,0,dpr,0,0); ctx.clearRect(0,0,w,h);
-    const x0 = 112, x1 = w - 10;
+    const x0 = 150, x1 = w - 10;
     // button lane
     const bHi = 14, bLo = 50;
-    // segment lane: level k (0 = off, 1..8 = a..dp)
-    const sTop = 76, step = 15.5;
-    const yS = idx => sTop + (8 - (idx + 1)) * step;
+    // one lane per segment pin (a at the top): HIGH only while that segment is lit
+    const sTop = 74, step = 17;
+    const laneHi = k => sTop + k*step + 3, laneLo = k => sTop + k*step + step - 3;
     ctx.textBaseline = 'middle';
     ctx.font = '600 12px Inter, sans-serif'; ctx.fillStyle = '#1d1d1f';
     ctx.fillText('button (pin 2)', 0, (bHi + bLo) / 2);
-    ctx.fillText('segment on', 0, yS(3));
+    ctx.fillText('segment pins', 0, sTop + 4*step - 8);
+    ctx.font = '500 10.5px Inter, sans-serif'; ctx.fillStyle = '#9a988f';
+    ctx.fillText('(one lit at a time)', 0, sTop + 4*step + 8);
     ctx.font = '600 10px JetBrains Mono, monospace'; ctx.fillStyle = '#9a988f';
     ctx.fillText('HIGH', x0 - 36, bHi); ctx.fillText('LOW', x0 - 36, bLo);
     ctx.strokeStyle = '#eceae4'; ctx.lineWidth = 1;
     ctx.beginPath(); ctx.moveTo(x0, bHi); ctx.lineTo(x1, bHi); ctx.moveTo(x0, bLo); ctx.lineTo(x1, bLo); ctx.stroke();
-    for (let k = -1; k < N; k++){
-      const y = yS(k);
-      ctx.fillStyle = '#9a988f'; ctx.textAlign = 'right';
-      ctx.fillText(k < 0 ? 'off' : NAMES[k], x0 - 8, y); ctx.textAlign = 'left';
-      ctx.strokeStyle = '#f1efe9'; ctx.beginPath(); ctx.moveTo(x0, y); ctx.lineTo(x1, y); ctx.stroke();
+    for (let k = 0; k < N; k++){
+      if (k % 2 === 0){ ctx.fillStyle = '#faf9f6'; ctx.fillRect(x0, sTop + k*step, x1 - x0, step); }
+      ctx.fillStyle = '#6b6b70'; ctx.textAlign = 'right';
+      ctx.fillText(`${NAMES[k]} ${PINS[k]}`, x0 - 8, sTop + k*step + step/2); ctx.textAlign = 'left';
+      ctx.strokeStyle = '#e3e1dc'; ctx.beginPath(); ctx.moveTo(x0, laneLo(k)); ctx.lineTo(x1, laneLo(k)); ctx.stroke();
     }
     const maxN = Math.floor((x1 - x0) / PX);
     if (samples.length > maxN + 2) samples.splice(0, samples.length - maxN - 2);
     const n = samples.length;
     const xOf = i => x1 - (n - 1 - i) * PX;
+    const sBottom = sTop + N*step;
     ctx.setLineDash([4,4]); ctx.strokeStyle = '#9a988f';
     for (let i = 0; i < n; i++){ const x = xOf(i); if (x < x0) continue;
-      if (samples[i].e){ ctx.beginPath(); ctx.moveTo(x, bHi); ctx.lineTo(x, yS(-1)); ctx.stroke(); } }
+      if (samples[i].e){ ctx.beginPath(); ctx.moveTo(x, bHi); ctx.lineTo(x, sBottom); ctx.stroke(); } }
     ctx.setLineDash([]);
-    const trace = (val, col, fill, base) => {
-      ctx.strokeStyle = col; ctx.lineWidth = 2.2;
+    const trace = (val, col, fill, base, lw) => {
+      ctx.strokeStyle = col; ctx.lineWidth = lw || 2.2;
       let started = false, py = 0; ctx.beginPath();
       for (let i = 0; i < n; i++){
         const x = xOf(i); if (x < x0 - PX) continue;
@@ -394,7 +397,26 @@
       if (fill){ ctx.fillStyle = fill; for (let i = 0; i < n; i++){ const x = xOf(i); if (x < x0) continue; const y = val(samples[i]); if (y < base) ctx.fillRect(x, y, PX + .3, base - y); } }
     };
     trace(s => s.b ? bHi : bLo, '#2563eb', 'rgba(37,99,235,.10)', bLo);
-    trace(s => yS(s.s), '#ff3b30', 'rgba(255,59,48,.10)', yS(-1));
+    for (let k = 0; k < N; k++){
+      const hi = laneHi(k), lo = laneLo(k);
+      trace(s => s.s === k ? hi : lo, '#c9c7c0', null, lo, 1.4);
+      // lit stretches: solid red bar on top of the grey trace
+      ctx.fillStyle = 'rgba(255,59,48,.28)'; ctx.strokeStyle = '#ff3b30'; ctx.lineWidth = 2.2;
+      let runStart = null;
+      for (let i = 0; i <= n; i++){
+        const on = i < n && samples[i].s === k;
+        const x = i < n ? xOf(i) : x1 + PX;
+        if (on && runStart === null) runStart = Math.max(x, x0);
+        if (!on && runStart !== null){
+          const xe = Math.min(x, x1);
+          if (xe > runStart){
+            ctx.fillRect(runStart, hi, xe - runStart, lo - hi);
+            ctx.beginPath(); ctx.moveTo(runStart, lo); ctx.lineTo(runStart, hi); ctx.lineTo(xe, hi); ctx.lineTo(xe, lo); ctx.stroke();
+          }
+          runStart = null;
+        }
+      }
+    }
     if (S.slow){
       ctx.fillStyle = '#b45309'; ctx.font = '600 12px Inter, sans-serif'; ctx.textAlign = 'right';
       ctx.fillText('⏸ slow motion: time frozen (a real pass takes microseconds)', x1, bLo + 13); ctx.textAlign = 'left';
